@@ -13,6 +13,16 @@ dist-ssr
 *.local
 src-tauri/target/
 
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Environment
+.env
+.env.*
+!.env.example
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
