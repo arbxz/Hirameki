@@ -47,6 +47,7 @@ export function SelectionLayer({
 }) {
   const items = useBoardStore((s) => s.items);
   const patchItems = useBoardStore((s) => s.patchItems);
+  const expandSelection = useBoardStore((s) => s.expandSelection);
   const moveableRef = useRef<Moveable>(null);
 
   // Snapshot of geometry at gesture start, and the live working copy.
@@ -67,6 +68,23 @@ export function SelectionLayer({
   useEffect(() => {
     moveableRef.current?.updateRect();
   }, [items, targets, viewport.x, viewport.y, viewport.zoom]);
+
+  // Double-click a grouped image to select its whole group (single click keeps
+  // selecting just one image).
+  useEffect(() => {
+    if (!worldEl) return;
+    const onDblClick = (e: MouseEvent) => {
+      const el = (e.target as HTMLElement).closest<HTMLElement>(
+        "[data-item-id]",
+      );
+      const id = el?.getAttribute("data-item-id");
+      if (!id) return;
+      const expanded = expandSelection([id]);
+      if (expanded.length > 1) setSelectedIds(expanded);
+    };
+    worldEl.addEventListener("dblclick", onDblClick);
+    return () => worldEl.removeEventListener("dblclick", onDblClick);
+  }, [worldEl, expandSelection, setSelectedIds]);
 
   const snapshot = () => {
     startRef.current.clear();
@@ -222,7 +240,13 @@ export function SelectionLayer({
           const ids = e.selected
             .map((el) => el.getAttribute("data-item-id"))
             .filter((v): v is string => !!v);
-          setSelectedIds(ids);
+          // A marquee drag has a non-zero selection rect; a plain click is a
+          // ~zero-area rect. Drags pull in every member of any group they touch
+          // (so you can grab a whole group by lassoing part of it); a click
+          // selects just the one image. Double-click-to-select-group is handled
+          // separately below.
+          const isMarquee = e.rect.width > 2 || e.rect.height > 2;
+          setSelectedIds(isMarquee ? expandSelection(ids) : ids);
         }}
       />
     </>

@@ -1,7 +1,9 @@
 import { create } from "zustand";
 import type { Board, Group, Item } from "../types/board";
 import {
+  createGroup as repoCreateGroup,
   createItem as repoCreateItem,
+  deleteGroup as repoDeleteGroup,
   deleteItem as repoDeleteItem,
   listGroups,
   listItems,
@@ -11,12 +13,36 @@ import {
 } from "../lib/repo";
 
 // Debounce helper for write-back of high-frequency state (viewport, drags).
-function debounce<A extends unknown[]>(fn: (...a: A) => void, ms: number) {
+// Exposes `flush()` to fire any pending call immediately (used on app close so
+// the final viewport position is never lost to the trailing delay).
+interface Debounced<A extends unknown[]> {
+  (...a: A): void;
+  flush: () => void;
+}
+function debounce<A extends unknown[]>(
+  fn: (...a: A) => void,
+  ms: number,
+): Debounced<A> {
   let t: ReturnType<typeof setTimeout> | undefined;
-  return (...a: A) => {
+  let pending: A | undefined;
+  const wrapped = (...a: A) => {
+    pending = a;
     if (t) clearTimeout(t);
-    t = setTimeout(() => fn(...a), ms);
+    t = setTimeout(() => {
+      t = undefined;
+      pending = undefined;
+      fn(...a);
+    }, ms);
   };
+  wrapped.flush = () => {
+    if (t) clearTimeout(t);
+    t = undefined;
+    if (pending) {
+      fn(...pending);
+      pending = undefined;
+    }
+  };
+  return wrapped;
 }
 
 interface BoardState {
@@ -32,6 +58,9 @@ interface BoardState {
   /** Persist the viewport; debounced so panning doesn't hammer the DB. */
   setView: (view: { x: number; y: number; zoom: number }) => void;
 
+  /** Force any pending viewport write to flush now (e.g. on app close). */
+  flushView: () => void;
+
   /** Create an item from geometry (+ optional image fields) and persist it. */
   addItem: (
     partial: Partial<Item> & Pick<Item, "x" | "y" | "width" | "height">,
@@ -45,6 +74,15 @@ interface BoardState {
 
   removeItem: (id: string) => Promise<void>;
   removeItems: (ids: string[]) => Promise<void>;
+
+  /** Group the given items into a new group; returns the new group id. */
+  groupItems: (ids: string[]) => Promise<string | null>;
+  /** Disband the group(s) that the given items belong to. */
+  ungroupItems: (ids: string[]) => Promise<void>;
+  /** Expand a set of item ids to include all siblings sharing a group. */
+  expandSelection: (ids: string[]) => string[];
+  /** Delete any group rows that no longer have member items. */
+  pruneEmptyGroups: () => Promise<void>;
 
   /** Raise the given items above all others, preserving their relative order. */
   bringToFront: (ids: string[]) => void;
@@ -91,6 +129,10 @@ export const useBoardStore = create<BoardState>((set, get) => {
       persistView(board.id, view);
     },
 
+    flushView() {
+      persistView.flush();
+    },
+
     async addItem(partial) {
       const board = get().board;
       if (!board) return null;
@@ -131,6 +173,83 @@ export const useBoardStore = create<BoardState>((set, get) => {
       const set_ = new Set(ids);
       set({ items: get().items.filter((it) => !set_.has(it.id)) });
       await Promise.all(ids.map((id) => repoDeleteItem(id)));
+      // Drop any group that no longer has members.
+      await get().pruneEmptyGroups();
+    },
+
+    async groupItems(ids) {
+      const board = get().board;
+      if (!board || ids.length < 2) return null;
+      const members = get().items.filter((it) => ids.includes(it.id));
+      // Bounding box over the members (stored on the group row).
+      const minX = Math.min(...members.map((m) => m.x));
+      const minY = Math.min(...members.map((m) => m.y));
+      const maxX = Math.max(...members.map((m) => m.x + m.width));
+      const maxY = Math.max(...members.map((m) => m.y + m.height));
+      try {
+        const group = await repoCreateGroup(board.id, ids, {
+          x: minX,
+          y: minY,
+          width: maxX - minX,
+          height: maxY - minY,
+        });
+        const idSet = new Set(ids);
+        set({
+          groups: [...get().groups, group],
+          items: get().items.map((it) =>
+            idSet.has(it.id) ? { ...it, groupId: group.id } : it,
+          ),
+        });
+        return group.id;
+      } catch (e) {
+        set({ error: String(e) });
+        return null;
+      }
+    },
+
+    async ungroupItems(ids) {
+      const items = get().items;
+      const groupIds = new Set(
+        items
+          .filter((it) => ids.includes(it.id) && it.groupId)
+          .map((it) => it.groupId as string),
+      );
+      if (groupIds.size === 0) return;
+      set({
+        groups: get().groups.filter((g) => !groupIds.has(g.id)),
+        items: items.map((it) =>
+          it.groupId && groupIds.has(it.groupId)
+            ? { ...it, groupId: null }
+            : it,
+        ),
+      });
+      await Promise.all([...groupIds].map((gid) => repoDeleteGroup(gid)));
+    },
+
+    expandSelection(ids) {
+      const items = get().items;
+      const groupIds = new Set(
+        ids
+          .map((id) => items.find((it) => it.id === id)?.groupId)
+          .filter((g): g is string => !!g),
+      );
+      if (groupIds.size === 0) return ids;
+      const out = new Set(ids);
+      for (const it of items) {
+        if (it.groupId && groupIds.has(it.groupId)) out.add(it.id);
+      }
+      return [...out];
+    },
+
+    async pruneEmptyGroups() {
+      const items = get().items;
+      const live = new Set(
+        items.map((it) => it.groupId).filter((g): g is string => !!g),
+      );
+      const empty = get().groups.filter((g) => !live.has(g.id));
+      if (empty.length === 0) return;
+      set({ groups: get().groups.filter((g) => live.has(g.id)) });
+      await Promise.all(empty.map((g) => repoDeleteGroup(g.id)));
     },
 
     bringToFront(ids) {

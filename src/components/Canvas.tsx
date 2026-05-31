@@ -29,6 +29,8 @@ export function Canvas() {
   const removeItems = useBoardStore((s) => s.removeItems);
   const bringToFront = useBoardStore((s) => s.bringToFront);
   const sendToBack = useBoardStore((s) => s.sendToBack);
+  const groupItems = useBoardStore((s) => s.groupItems);
+  const ungroupItems = useBoardStore((s) => s.ungroupItems);
 
   const [zoom, setZoom] = useState(1);
   const [scroll, setScroll] = useState({ x: 0, y: 0 });
@@ -60,6 +62,24 @@ export function Canvas() {
     () => [...items].sort((a, b) => a.z - b.z),
     [items],
   );
+
+  // Group/ungroup availability for the toolbar. Can group when ≥2 are selected
+  // and they aren't already all one existing group; can ungroup when any
+  // selected item belongs to a group.
+  const { canGroup, canUngroup } = useMemo(() => {
+    const sel = items.filter((it) => selectedIds.includes(it.id));
+    const groupIds = new Set(sel.map((it) => it.groupId));
+    const allOneGroup =
+      sel.length >= 2 &&
+      groupIds.size === 1 &&
+      !groupIds.has(null) &&
+      sel.length ===
+        items.filter((it) => it.groupId === sel[0].groupId).length;
+    return {
+      canGroup: sel.length >= 2 && !allOneGroup,
+      canUngroup: sel.some((it) => it.groupId),
+    };
+  }, [items, selectedIds]);
 
   // Latest viewport in a ref for handlers registered once.
   const viewRef = useRef({ zoom: 1, scroll: { x: 0, y: 0 } });
@@ -122,27 +142,44 @@ export function Canvas() {
         return;
       }
       const sel = selectedRef.current;
+      const mod = e.ctrlKey || e.metaKey;
       if ((e.key === "Delete" || e.key === "Backspace") && sel.length) {
         e.preventDefault();
         requestDelete(sel);
       } else if (e.key === "Escape") {
         setSelectedIds([]);
-      } else if (sel.length && (e.ctrlKey || e.metaKey) && e.key === "]") {
+      } else if (mod && (e.key === "g" || e.key === "G")) {
+        // Ctrl/Cmd+G groups; add Shift to ungroup.
+        e.preventDefault();
+        if (e.shiftKey) {
+          if (sel.length) void ungroupItems(sel);
+        } else if (sel.length >= 2) {
+          void groupItems(sel);
+        }
+      } else if (sel.length && mod && e.key === "]") {
         e.preventDefault();
         bringToFront(sel);
-      } else if (sel.length && (e.ctrlKey || e.metaKey) && e.key === "[") {
+      } else if (sel.length && mod && e.key === "[") {
         e.preventDefault();
         sendToBack(sel);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [removeItems, bringToFront, sendToBack]);
+  }, [removeItems, bringToFront, sendToBack, groupItems, ungroupItems]);
 
   // Load the board on mount.
   useEffect(() => {
     void init();
   }, [init]);
+
+  // Flush the pending viewport write when the window is closing so the next
+  // launch restores the exact last position.
+  useEffect(() => {
+    const flush = useBoardStore.getState().flushView;
+    window.addEventListener("beforeunload", flush);
+    return () => window.removeEventListener("beforeunload", flush);
+  }, []);
 
   // WebView2 hijacks Ctrl+wheel for native page zoom; cancel it.
   useEffect(() => {
@@ -170,17 +207,24 @@ export function Canvas() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [addItem, setError]);
 
-  // Restore the persisted viewport once the board is loaded.
+  // Restore the persisted viewport once the board is loaded. Deferred to the
+  // next frame: InfiniteViewer must finish measuring its container before
+  // scrollTo/setZoom take effect, otherwise the restore silently no-ops and the
+  // canvas opens at the origin/default zoom.
   const restored = useRef(false);
   useEffect(() => {
     if (!board || restored.current) return;
     restored.current = true;
-    const v = viewerRef.current;
-    if (!v) return;
-    v.setZoom(board.viewZoom);
-    v.scrollTo(board.viewX, board.viewY);
-    setZoom(board.viewZoom);
-    setScroll({ x: board.viewX, y: board.viewY });
+    const { viewZoom, viewX, viewY } = board;
+    const raf = requestAnimationFrame(() => {
+      const v = viewerRef.current;
+      if (!v) return;
+      v.setZoom(viewZoom);
+      v.scrollTo(viewX, viewY);
+      setZoom(viewZoom);
+      setScroll({ x: viewX, y: viewY });
+    });
+    return () => cancelAnimationFrame(raf);
   }, [board]);
 
   const applyZoom = (next: number) => {
@@ -319,6 +363,24 @@ export function Canvas() {
             >
               Back
             </button>
+            {canGroup && (
+              <button
+                className="rounded px-2 py-1 hover:bg-white/10"
+                onClick={() => void groupItems(selectedIds)}
+                title="Group (Ctrl+G)"
+              >
+                Group
+              </button>
+            )}
+            {canUngroup && (
+              <button
+                className="rounded px-2 py-1 hover:bg-white/10"
+                onClick={() => void ungroupItems(selectedIds)}
+                title="Ungroup (Ctrl+Shift+G)"
+              >
+                Ungroup
+              </button>
+            )}
             <button
               className="rounded px-2 py-1 text-red-300 hover:bg-red-500/20"
               onClick={() => requestDelete(selectedIds)}
@@ -370,9 +432,10 @@ export function Canvas() {
         </button>
       </div>
 
-      {/* delete confirmation */}
+      {/* delete confirmation — must sit above moveable's control box (z-index
+          3000), so use an explicit higher z-index */}
       {pendingDelete && (
-        <div className="ui-chrome absolute inset-0 z-20 grid place-items-center bg-black/50">
+        <div className="ui-chrome absolute inset-0 z-[4000] grid place-items-center bg-black/50">
           <div className="w-80 rounded-xl bg-neutral-800 p-5 text-neutral-100 shadow-2xl ring-1 ring-white/10">
             <h2 className="text-sm font-semibold">
               Delete {pendingDelete.length}{" "}

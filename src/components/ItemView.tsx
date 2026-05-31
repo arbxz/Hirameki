@@ -45,7 +45,11 @@ export function ItemView({
     <div
       data-item-id={item.id}
       className={`board-item absolute left-0 top-0 overflow-hidden rounded-lg shadow-lg ${
-        selected ? "ring-2 ring-sky-400" : "ring-1 ring-black/20"
+        selected
+          ? "ring-2 ring-sky-400"
+          : item.groupId
+            ? "ring-2 ring-violet-400/60"
+            : "ring-1 ring-black/20"
       }`}
       style={{
         width: item.width,

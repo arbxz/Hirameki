@@ -240,3 +240,69 @@ export async function listGroups(boardId: string): Promise<Group[]> {
   );
   return rows.map(toGroup);
 }
+
+/**
+ * Create a group from a set of items: inserts a groups row (geometry = the
+ * items' bounding box, to satisfy the NOT NULL columns) and stamps each item's
+ * group_id. Returns the new Group.
+ */
+export async function createGroup(
+  boardId: string,
+  itemIds: string[],
+  bbox: { x: number; y: number; width: number; height: number },
+): Promise<Group> {
+  const db = await getDb();
+  const group: Group = {
+    id: uuid(),
+    boardId,
+    title: "",
+    x: bbox.x,
+    y: bbox.y,
+    width: bbox.width,
+    height: bbox.height,
+    color: null,
+    z: 0,
+    createdAt: Date.now(),
+  };
+  await db.execute(
+    `INSERT INTO groups (id, board_id, title, x, y, width, height, color, z, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+    [
+      group.id,
+      group.boardId,
+      group.title,
+      group.x,
+      group.y,
+      group.width,
+      group.height,
+      group.color,
+      group.z,
+      group.createdAt,
+    ],
+  );
+  await setItemsGroup(itemIds, group.id);
+  return group;
+}
+
+/** Assign (or clear, with null) the group_id of several items. */
+export async function setItemsGroup(
+  itemIds: string[],
+  groupId: string | null,
+): Promise<void> {
+  if (itemIds.length === 0) return;
+  const db = await getDb();
+  const placeholders = itemIds.map((_, i) => `$${i + 2}`).join(", ");
+  await db.execute(
+    `UPDATE items SET group_id = $1 WHERE id IN (${placeholders})`,
+    [groupId, ...itemIds],
+  );
+}
+
+/** Disband a group: clear members' group_id, then delete the group row. */
+export async function deleteGroup(groupId: string): Promise<void> {
+  const db = await getDb();
+  await db.execute("UPDATE items SET group_id = NULL WHERE group_id = $1", [
+    groupId,
+  ]);
+  await db.execute("DELETE FROM groups WHERE id = $1", [groupId]);
+}
