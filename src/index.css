@@ -1,0 +1,43 @@
+@import "tailwindcss";
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  overscroll-behavior: none;
+}
+
+/* Canvas app: suppress text selection everywhere so panning/dragging never
+   highlights text. Re-enable it for real editable fields. */
+html,
+body,
+#root {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+input,
+textarea,
+[contenteditable="true"] {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* Don't let images be dragged out as ghost images. */
+img {
+  -webkit-user-drag: none;
+  user-select: none;
+}
+
+/* infinite-viewer collapses to a thin strip unless its nested container/wrapper
+   elements are explicitly sized. Force the whole stack to fill its parent. */
+.infinite-viewer,
+.infinite-viewer-container,
+.infinite-viewer-wrapper {
+  width: 100%;
+  height: 100%;
+}
