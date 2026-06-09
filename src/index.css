@@ -1,5 +1,19 @@
 @import "tailwindcss";
 
+/* Theme tokens. These defaults match the "Dark" preset; the theme store
+   overrides them on <html> at runtime (see src/store/themeStore.ts). */
+:root {
+  --bg: #171717;
+  --grid: rgba(255, 255, 255, 0.1);
+  --surface: rgba(38, 38, 38, 0.9);
+  --surface-solid: #262626;
+  --surface-hover: rgba(255, 255, 255, 0.1);
+  --border: rgba(255, 255, 255, 0.1);
+  --text: #f5f5f5;
+  --text-dim: #a3a3a3;
+  --accent: #38bdf8;
+}
+
 html,
 body,
 #root {
@@ -9,6 +23,8 @@ body,
 
 body {
   overscroll-behavior: none;
+  background: var(--bg);
+  color: var(--text);
 }
 
 /* Canvas app: suppress text selection everywhere so panning/dragging never

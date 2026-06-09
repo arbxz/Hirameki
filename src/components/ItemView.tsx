@@ -46,7 +46,7 @@ export function ItemView({
       data-item-id={item.id}
       className={`board-item absolute left-0 top-0 overflow-hidden rounded-lg shadow-lg ${
         selected
-          ? "ring-2 ring-sky-400"
+          ? "ring-2"
           : item.groupId
             ? "ring-2 ring-violet-400/60"
             : "ring-1 ring-black/20"
@@ -57,6 +57,7 @@ export function ItemView({
         transform: itemTransform(item.x, item.y, item.rotation),
         transformOrigin: "0 0",
         background: item.filePath ? "#1a1a1a" : colorFor(item.id),
+        ...(selected ? { boxShadow: `0 0 0 2px var(--accent)` } : null),
       }}
     >
       {src && (

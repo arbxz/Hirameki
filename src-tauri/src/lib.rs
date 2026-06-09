@@ -1,6 +1,7 @@
 use tauri_plugin_sql::{Builder as SqlBuilder, Migration, MigrationKind};
 
 mod audio;
+mod bundle;
 mod images;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -32,7 +33,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             images::save_image,
             images::download_image,
-            audio::save_audio
+            audio::save_audio,
+            bundle::export_data,
+            bundle::import_data
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

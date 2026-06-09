@@ -1,5 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import InfiniteViewer from "react-infinite-viewer";
+import {
+  BringToFront,
+  Group as GroupIcon,
+  ImagePlus,
+  Minus,
+  Plus,
+  SendToBack,
+  Trash2,
+  Ungroup,
+} from "lucide-react";
 import { useBoardStore } from "../store/boardStore";
 import { ingestDataTransfer, ingestFiles } from "../lib/ingest";
 import { ItemView } from "./ItemView";
@@ -128,7 +138,7 @@ export function Canvas() {
     };
   }, []);
 
-  // Delete selection; z-order shortcuts; escape to deselect.
+  // Delete selection; group/ungroup; z-order shortcuts; escape to deselect.
   useEffect(() => {
     const isEditable = (el: EventTarget | null) =>
       !!(el as HTMLElement | null)?.closest?.(
@@ -212,17 +222,32 @@ export function Canvas() {
   // scrollTo/setZoom take effect, otherwise the restore silently no-ops and the
   // canvas opens at the origin/default zoom.
   const restored = useRef(false);
+  // True while we're programmatically restoring. InfiniteViewer re-emits `scroll`
+  // events in response to setZoom/scrollTo (and again a frame later via its own
+  // scroll-correction). Those echoes must NOT persist, or they overwrite the
+  // saved viewport with the restore's intermediate (wrong-zoom) values — which
+  // corrupts the stored position on the *next* launch.
+  const restoringRef = useRef(false);
   useEffect(() => {
     if (!board || restored.current) return;
     restored.current = true;
     const { viewZoom, viewX, viewY } = board;
+    restoringRef.current = true;
     const raf = requestAnimationFrame(() => {
       const v = viewerRef.current;
-      if (!v) return;
-      v.setZoom(viewZoom);
-      v.scrollTo(viewX, viewY);
-      setZoom(viewZoom);
-      setScroll({ x: viewX, y: viewY });
+      if (v) {
+        v.setZoom(viewZoom);
+        v.scrollTo(viewX, viewY);
+        setZoom(viewZoom);
+        setScroll({ x: viewX, y: viewY });
+      }
+      // Release after the viewer settles: its scroll-correction runs on the
+      // following frame, so wait two frames before re-enabling persistence.
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          restoringRef.current = false;
+        }),
+      );
     });
     return () => cancelAnimationFrame(raf);
   }, [board]);
@@ -258,6 +283,10 @@ export function Canvas() {
     );
   };
 
+  // shared chrome button styling
+  const chip =
+    "grid h-8 w-8 place-items-center rounded hover:bg-[var(--surface-hover)]";
+
   return (
     <div
       ref={containerRef}
@@ -269,7 +298,7 @@ export function Canvas() {
         if (e.relatedTarget === null) setDragOver(false);
       }}
       onDrop={onDrop}
-      className={`relative h-screen w-screen select-none overflow-hidden bg-neutral-900 ${
+      className={`relative h-screen w-screen select-none overflow-hidden bg-[var(--bg)] ${
         spaceHeld ? "cursor-grab active:cursor-grabbing" : ""
       }`}
     >
@@ -278,7 +307,7 @@ export function Canvas() {
         className="pointer-events-none absolute inset-0"
         style={{
           backgroundImage:
-            "radial-gradient(circle, rgba(255,255,255,0.10) 1px, transparent 1px)",
+            "radial-gradient(circle, var(--grid) 1px, transparent 1px)",
           backgroundSize: `${GRID * zoom}px ${GRID * zoom}px`,
           backgroundPosition: `${-scroll.x * zoom}px ${-scroll.y * zoom}px`,
         }}
@@ -296,13 +325,19 @@ export function Canvas() {
         zoomRange={[MIN_ZOOM, MAX_ZOOM]}
         onScroll={(e) => {
           setScroll({ x: e.scrollLeft, y: e.scrollTop });
-          setView({ x: e.scrollLeft, y: e.scrollTop, zoom });
+          if (restoringRef.current) return;
+          // Read the zoom from the viewer, not the render closure: a scroll
+          // event can be emitted by a zoom change (the viewer scrolls to keep
+          // the pinch centre), and the closure's `zoom` lags a render behind.
+          const z = viewerRef.current?.getZoom() ?? zoom;
+          setView({ x: e.scrollLeft, y: e.scrollTop, zoom: z });
         }}
         onPinch={(e) => {
           const x = viewerRef.current?.getScrollLeft() ?? scroll.x;
           const y = viewerRef.current?.getScrollTop() ?? scroll.y;
           setZoom(e.zoom);
           setScroll({ x, y });
+          if (restoringRef.current) return;
           setView({ x, y, zoom: e.zoom });
         }}
       >
@@ -332,8 +367,11 @@ export function Canvas() {
 
       {/* drop overlay */}
       {dragOver && (
-        <div className="pointer-events-none absolute inset-3 z-10 grid place-items-center rounded-2xl border-2 border-dashed border-sky-400/70 bg-sky-400/10">
-          <span className="rounded-lg bg-neutral-900/80 px-4 py-2 text-sm text-sky-200">
+        <div
+          className="pointer-events-none absolute inset-3 z-10 grid place-items-center rounded-2xl border-2 border-dashed bg-[var(--accent)]/10"
+          style={{ borderColor: "var(--accent)" }}
+        >
+          <span className="rounded-lg bg-[var(--surface-solid)] px-4 py-2 text-sm text-[var(--text)]">
             Drop images or image links
           </span>
         </div>
@@ -342,55 +380,56 @@ export function Canvas() {
       {/* toolbar */}
       <div className="ui-chrome absolute left-4 top-4 flex items-center gap-2">
         <button
-          className="rounded-lg bg-neutral-800/90 px-3 py-1.5 text-xs text-neutral-100 shadow-lg ring-1 ring-white/10 hover:bg-neutral-700"
+          className="flex items-center gap-1.5 rounded-lg bg-[var(--surface)] px-3 py-1.5 text-xs text-[var(--text)] shadow-lg ring-1 ring-[var(--border)] backdrop-blur hover:bg-[var(--surface-hover)]"
           onClick={() => fileInputRef.current?.click()}
         >
+          <ImagePlus size={14} />
           Upload images
         </button>
         {selectedIds.length > 0 && (
-          <div className="flex items-center gap-1 rounded-lg bg-neutral-800/90 p-1 text-xs text-neutral-100 shadow-lg ring-1 ring-white/10">
+          <div className="flex items-center gap-1 rounded-lg bg-[var(--surface)] p-1 text-[var(--text)] shadow-lg ring-1 ring-[var(--border)] backdrop-blur">
             <button
-              className="rounded px-2 py-1 hover:bg-white/10"
+              className={chip}
               onClick={() => bringToFront(selectedIds)}
               title="Bring to front (Ctrl+])"
             >
-              Front
+              <BringToFront size={16} />
             </button>
             <button
-              className="rounded px-2 py-1 hover:bg-white/10"
+              className={chip}
               onClick={() => sendToBack(selectedIds)}
               title="Send to back (Ctrl+[)"
             >
-              Back
+              <SendToBack size={16} />
             </button>
             {canGroup && (
               <button
-                className="rounded px-2 py-1 hover:bg-white/10"
+                className={chip}
                 onClick={() => void groupItems(selectedIds)}
                 title="Group (Ctrl+G)"
               >
-                Group
+                <GroupIcon size={16} />
               </button>
             )}
             {canUngroup && (
               <button
-                className="rounded px-2 py-1 hover:bg-white/10"
+                className={chip}
                 onClick={() => void ungroupItems(selectedIds)}
                 title="Ungroup (Ctrl+Shift+G)"
               >
-                Ungroup
+                <Ungroup size={16} />
               </button>
             )}
             <button
-              className="rounded px-2 py-1 text-red-300 hover:bg-red-500/20"
+              className="grid h-8 w-8 place-items-center rounded text-red-400 hover:bg-red-500/20"
               onClick={() => requestDelete(selectedIds)}
               title="Delete (Del)"
             >
-              Delete
+              <Trash2 size={16} />
             </button>
           </div>
         )}
-        <span className="select-none text-xs text-neutral-500">
+        <span className="select-none text-xs text-[var(--text-dim)]">
           {loading
             ? "loading…"
             : `${items.length} items${
@@ -408,27 +447,19 @@ export function Canvas() {
       </div>
 
       {/* zoom controls */}
-      <div className="ui-chrome absolute bottom-4 right-4 flex items-center gap-1 rounded-lg bg-neutral-800/90 p-1 text-neutral-200 shadow-lg ring-1 ring-white/10 backdrop-blur">
-        <button
-          className="h-8 w-8 rounded text-lg leading-none hover:bg-white/10"
-          onClick={() => applyZoom(zoom / 1.2)}
-          title="Zoom out"
-        >
-          −
+      <div className="ui-chrome absolute bottom-4 right-4 flex items-center gap-1 rounded-lg bg-[var(--surface)] p-1 text-[var(--text)] shadow-lg ring-1 ring-[var(--border)] backdrop-blur">
+        <button className={chip} onClick={() => applyZoom(zoom / 1.2)} title="Zoom out">
+          <Minus size={16} />
         </button>
         <button
-          className="h-8 min-w-16 rounded px-2 text-xs tabular-nums hover:bg-white/10"
+          className="h-8 min-w-16 rounded px-2 text-xs tabular-nums hover:bg-[var(--surface-hover)]"
           onClick={resetView}
           title="Reset view"
         >
           {Math.round(zoom * 100)}%
         </button>
-        <button
-          className="h-8 w-8 rounded text-lg leading-none hover:bg-white/10"
-          onClick={() => applyZoom(zoom * 1.2)}
-          title="Zoom in"
-        >
-          +
+        <button className={chip} onClick={() => applyZoom(zoom * 1.2)} title="Zoom in">
+          <Plus size={16} />
         </button>
       </div>
 
@@ -436,17 +467,17 @@ export function Canvas() {
           3000), so use an explicit higher z-index */}
       {pendingDelete && (
         <div className="ui-chrome absolute inset-0 z-[4000] grid place-items-center bg-black/50">
-          <div className="w-80 rounded-xl bg-neutral-800 p-5 text-neutral-100 shadow-2xl ring-1 ring-white/10">
+          <div className="w-80 rounded-xl bg-[var(--surface-solid)] p-5 text-[var(--text)] shadow-2xl ring-1 ring-[var(--border)]">
             <h2 className="text-sm font-semibold">
               Delete {pendingDelete.length}{" "}
               {pendingDelete.length === 1 ? "image" : "images"}?
             </h2>
-            <p className="mt-1 text-xs text-neutral-400">
+            <p className="mt-1 text-xs text-[var(--text-dim)]">
               This can't be undone.
             </p>
             <div className="mt-4 flex justify-end gap-2">
               <button
-                className="rounded-lg px-3 py-1.5 text-xs text-neutral-300 hover:bg-white/10"
+                className="rounded-lg px-3 py-1.5 text-xs text-[var(--text-dim)] hover:bg-[var(--surface-hover)]"
                 onClick={() => setPendingDelete(null)}
               >
                 Cancel

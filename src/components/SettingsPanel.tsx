@@ -1,0 +1,170 @@
+import { useEffect, useState } from "react";
+import {
+  Download,
+  Palette,
+  Settings,
+  Upload,
+  X,
+} from "lucide-react";
+import { useThemeStore } from "../store/themeStore";
+import { PRESETS, THEME_TOKENS, type Theme } from "../lib/themes";
+import { exportBundle, importBundle } from "../lib/exportImport";
+import { useBoardStore } from "../store/boardStore";
+
+// Settings panel (top-right, ui-chrome). Theme presets + a custom color editor,
+// plus full-board export/import. Mostly themes the background and UI chrome.
+
+const TOKEN_LABELS: Record<keyof Theme, string> = {
+  bg: "Background",
+  grid: "Grid dots",
+  surface: "Panel",
+  surfaceSolid: "Panel (solid)",
+  surfaceHover: "Hover",
+  border: "Border",
+  text: "Text",
+  textDim: "Text (dim)",
+  accent: "Accent",
+};
+
+// A token may hold rgba(); <input type=color> needs #rrggbb. Show a usable hex
+// fallback and pass whatever the picker returns straight through.
+function hexForPicker(value: string): string {
+  return /^#[0-9a-f]{6}$/i.test(value.trim()) ? value.trim() : "#888888";
+}
+
+export function SettingsPanel() {
+  const { name, custom, init, selectPreset, setCustomToken } = useThemeStore();
+  const setError = useBoardStore((s) => s.setError);
+
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState<null | "export" | "import">(null);
+
+  useEffect(() => {
+    void init();
+  }, [init]);
+
+  const doExport = async () => {
+    setBusy("export");
+    try {
+      await exportBundle();
+    } catch (e) {
+      setError(`Export failed: ${String(e)}`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const doImport = async () => {
+    setBusy("import");
+    try {
+      await importBundle(); // reloads on success
+    } catch (e) {
+      setError(`Import failed: ${String(e)}`);
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div className="ui-chrome absolute right-4 top-4 flex flex-col items-end gap-2">
+      <button
+        className="grid h-9 w-9 place-items-center rounded-lg bg-[var(--surface)] text-[var(--text)] shadow-lg ring-1 ring-[var(--border)] backdrop-blur hover:bg-[var(--surface-hover)]"
+        onClick={() => setOpen((o) => !o)}
+        title="Settings"
+      >
+        {open ? <X size={16} /> : <Settings size={16} />}
+      </button>
+
+      {open && (
+        <div className="w-72 rounded-xl bg-[var(--surface)] p-3 text-[var(--text)] shadow-2xl ring-1 ring-[var(--border)] backdrop-blur">
+          {/* themes */}
+          <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold">
+            <Palette size={14} /> Theme
+          </div>
+          <div className="mb-3 grid grid-cols-3 gap-1.5">
+            {Object.entries(PRESETS).map(([presetName, theme]) => (
+              <button
+                key={presetName}
+                onClick={() => selectPreset(presetName)}
+                className={`flex flex-col items-center gap-1 rounded-lg p-2 ring-1 ${
+                  name === presetName
+                    ? "ring-[var(--accent)]"
+                    : "ring-[var(--border)] hover:bg-[var(--surface-hover)]"
+                }`}
+                title={presetName}
+              >
+                <span
+                  className="h-6 w-full rounded"
+                  style={{
+                    background: theme.bg,
+                    boxShadow: `inset 0 0 0 2px ${theme.accent}`,
+                  }}
+                />
+                <span className="text-[10px]">{presetName}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* custom colors */}
+          <details className="mb-3">
+            <summary className="cursor-pointer text-xs text-[var(--text-dim)] hover:text-[var(--text)]">
+              Custom colors {name === "Custom" && "(active)"}
+            </summary>
+            <div className="mt-2 space-y-1.5">
+              {THEME_TOKENS.map((token) => (
+                <label
+                  key={token}
+                  className="flex items-center justify-between gap-2 text-[11px]"
+                >
+                  <span className="text-[var(--text-dim)]">
+                    {TOKEN_LABELS[token]}
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <input
+                      type="text"
+                      value={custom[token]}
+                      onChange={(e) => setCustomToken(token, e.target.value)}
+                      className="w-28 rounded bg-[var(--surface-solid)] px-1.5 py-0.5 text-[10px] text-[var(--text)] outline-none ring-1 ring-[var(--border)] focus:ring-[var(--accent)]"
+                    />
+                    <input
+                      type="color"
+                      value={hexForPicker(custom[token])}
+                      onChange={(e) => setCustomToken(token, e.target.value)}
+                      className="h-6 w-6 cursor-pointer rounded border-0 bg-transparent p-0"
+                    />
+                  </span>
+                </label>
+              ))}
+            </div>
+          </details>
+
+          {/* export / import */}
+          <div className="border-t border-[var(--border)] pt-3">
+            <div className="mb-1.5 text-xs font-semibold">Board data</div>
+            <div className="flex gap-1.5">
+              <button
+                onClick={doExport}
+                disabled={busy !== null}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-[var(--surface-hover)] px-2 py-1.5 text-xs hover:opacity-80 disabled:opacity-40"
+              >
+                <Download size={14} />
+                {busy === "export" ? "Exporting…" : "Export"}
+              </button>
+              <button
+                onClick={doImport}
+                disabled={busy !== null}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-[var(--surface-hover)] px-2 py-1.5 text-xs hover:opacity-80 disabled:opacity-40"
+              >
+                <Upload size={14} />
+                {busy === "import" ? "Importing…" : "Import"}
+              </button>
+            </div>
+            <p className="mt-1.5 text-[10px] leading-snug text-[var(--text-dim)]">
+              Export bundles every image &amp; sound into one file. Import
+              replaces the current board.
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
