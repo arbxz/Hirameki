@@ -40,9 +40,14 @@ pub fn export_data(
             assets.insert(rel, STANDARD.encode(bytes));
         }
     }
+    let asset_count = assets.len();
     let bundle = Bundle { manifest, assets };
     let json = serde_json::to_string(&bundle).map_err(|e| format!("serialize: {e}"))?;
-    fs::write(&out_path, json).map_err(|e| format!("write bundle: {e}"))?;
+    fs::write(&out_path, json).map_err(|e| {
+        log::error!("export_data write failed ({out_path}): {e}");
+        format!("write bundle: {e}")
+    })?;
+    log::info!("export_data wrote {asset_count} assets to {out_path}");
     Ok(())
 }
 
@@ -51,8 +56,15 @@ pub fn export_data(
 #[tauri::command]
 pub fn import_data(app: AppHandle, in_path: String) -> Result<String, String> {
     let base = app_data(&app)?;
-    let raw = fs::read_to_string(&in_path).map_err(|e| format!("read bundle: {e}"))?;
-    let bundle: Bundle = serde_json::from_str(&raw).map_err(|e| format!("parse bundle: {e}"))?;
+    let raw = fs::read_to_string(&in_path).map_err(|e| {
+        log::error!("import_data read failed ({in_path}): {e}");
+        format!("read bundle: {e}")
+    })?;
+    let bundle: Bundle = serde_json::from_str(&raw).map_err(|e| {
+        log::error!("import_data parse failed ({in_path}): {e}");
+        format!("parse bundle: {e}")
+    })?;
+    let asset_count = bundle.assets.len();
     for (rel, b64) in bundle.assets {
         let p = base.join(&rel);
         if let Some(parent) = p.parent() {
@@ -63,5 +75,6 @@ pub fn import_data(app: AppHandle, in_path: String) -> Result<String, String> {
             .map_err(|e| format!("decode asset {rel}: {e}"))?;
         fs::write(&p, bytes).map_err(|e| format!("write asset {rel}: {e}"))?;
     }
+    log::info!("import_data restored {asset_count} assets from {in_path}");
     Ok(bundle.manifest)
 }

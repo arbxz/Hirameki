@@ -58,6 +58,7 @@ fn ext_from_url(url: &str) -> Option<String> {
 /// size cap so a hostile or broken URL can't hang or exhaust memory.
 #[tauri::command]
 pub async fn download_image(app: AppHandle, url: String) -> Result<String, String> {
+    log::info!("download_image: {url}");
     let client = reqwest::Client::builder()
         .timeout(DOWNLOAD_TIMEOUT)
         .redirect(reqwest::redirect::Policy::limited(MAX_REDIRECTS))
@@ -83,6 +84,7 @@ pub async fn download_image(app: AppHandle, url: String) -> Result<String, Strin
     if let Some(ct) = &content_type {
         let main = ct.split(';').next().unwrap_or("").trim();
         if !main.is_empty() && !main.starts_with("image/") {
+            log::warn!("download_image rejected non-image ({main}): {url}");
             return Err(format!("not an image (content-type: {main})"));
         }
     }
@@ -91,6 +93,7 @@ pub async fn download_image(app: AppHandle, url: String) -> Result<String, Strin
     // streaming so an absent/lying header still can't blow past the limit.
     if let Some(len) = resp.content_length() {
         if len as usize > MAX_IMAGE_BYTES {
+            log::warn!("download_image rejected oversized ({len} bytes): {url}");
             return Err(format!("image too large: {len} bytes"));
         }
     }
@@ -102,6 +105,7 @@ pub async fn download_image(app: AppHandle, url: String) -> Result<String, Strin
         .map_err(|e| format!("read body: {e}"))?
     {
         if bytes.len() + chunk.len() > MAX_IMAGE_BYTES {
+            log::warn!("download_image aborted oversized stream: {url}");
             return Err("image too large".into());
         }
         bytes.extend_from_slice(&chunk);
@@ -117,5 +121,7 @@ pub async fn download_image(app: AppHandle, url: String) -> Result<String, Strin
         .or_else(|| ext_from_url(&url))
         .unwrap_or_else(|| "png".to_string());
 
-    storage::save_bytes(&app, IMAGES_SUBDIR, &bytes, &ext, "png")
+    let rel = storage::save_bytes(&app, IMAGES_SUBDIR, &bytes, &ext, "png")?;
+    log::info!("download_image saved {rel} ({} bytes)", bytes.len());
+    Ok(rel)
 }
