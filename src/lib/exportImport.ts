@@ -14,8 +14,53 @@ const INSERT_ORDER = ["boards", "groups", "items", "tracks", "settings"];
 // Wipe order (children before parents).
 const WIPE_ORDER = ["items", "groups", "tracks", "settings", "boards"];
 
+// Allowed columns per table (matches the migrations). Used to validate an
+// imported manifest before applying it: this both rejects foreign/corrupt
+// bundles and keeps the dynamically-built INSERTs free of attacker-controlled
+// identifiers (column/table names can't be parameterized).
+const TABLE_COLUMNS: Record<string, ReadonlySet<string>> = {
+  boards: new Set([
+    "id", "name", "created_at", "updated_at", "view_x", "view_y", "view_zoom",
+  ]),
+  groups: new Set([
+    "id", "board_id", "title", "x", "y", "width", "height", "color", "z",
+    "created_at",
+  ]),
+  items: new Set([
+    "id", "board_id", "group_id", "file_path", "src_url", "x", "y", "width",
+    "height", "rotation", "z", "natural_w", "natural_h", "created_at",
+  ]),
+  tracks: new Set(["id", "title", "file_path", "src_url", "created_at"]),
+  settings: new Set(["key", "value"]),
+};
+
 type Row = Record<string, unknown>;
 type Manifest = Record<string, Row[]>;
+
+/**
+ * Reject a malformed or foreign bundle BEFORE anything destructive runs. Every
+ * table must be one we own and every row's columns a subset of that table's
+ * schema. (The sql plugin pools connections, so a single atomic transaction
+ * across the wipe+insert isn't available here — validating up front is what
+ * keeps a bad import from destroying the current board.)
+ */
+function validateManifest(m: Manifest): void {
+  for (const [table, rows] of Object.entries(m)) {
+    const allowed = TABLE_COLUMNS[table];
+    if (!allowed) throw new Error(`unknown table in bundle: ${table}`);
+    if (!Array.isArray(rows)) throw new Error(`malformed rows for table: ${table}`);
+    for (const row of rows) {
+      if (!row || typeof row !== "object") {
+        throw new Error(`malformed row in ${table}`);
+      }
+      for (const col of Object.keys(row)) {
+        if (!allowed.has(col)) {
+          throw new Error(`unknown column "${col}" in ${table}`);
+        }
+      }
+    }
+  }
+}
 
 async function dumpManifest(): Promise<Manifest> {
   const db = await getDb();
@@ -65,6 +110,9 @@ async function insertRow(table: string, row: Row): Promise<void> {
 }
 
 async function applyManifest(m: Manifest): Promise<void> {
+  // Validate the whole manifest first: a bad bundle must fail before the wipe,
+  // not halfway through restoring it.
+  validateManifest(m);
   const db = await getDb();
   for (const t of WIPE_ORDER) await db.execute(`DELETE FROM ${t}`);
   for (const t of INSERT_ORDER) {

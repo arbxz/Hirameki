@@ -1,27 +1,15 @@
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-import { appDataDir, join } from "@tauri-apps/api/path";
+import { invoke } from "@tauri-apps/api/core";
+import { extFromName, resolveAssetSrc } from "./assets";
 
 // Frontend half of audio ingestion (mirrors lib/images.ts). The Rust command
 // save_audio writes bytes to the app audio dir; this resolves stored relative
 // paths back into asset URLs for the <audio> element, and extracts bytes from
 // picked files.
 
-let appDataDirPromise: Promise<string> | null = null;
-function getAppDataDir(): Promise<string> {
-  if (!appDataDirPromise) appDataDirPromise = appDataDir();
-  return appDataDirPromise;
-}
+export { looksLikeUrl } from "./assets";
 
 /** Resolve a stored relative path ("audio/x.mp3") to an <audio>-usable URL. */
-export async function resolveAudioSrc(relPath: string): Promise<string> {
-  const abs = await join(await getAppDataDir(), relPath);
-  return convertFileSrc(abs);
-}
-
-function extFromName(name: string): string {
-  const dot = name.lastIndexOf(".");
-  return dot >= 0 ? name.slice(dot + 1) : "";
-}
+export const resolveAudioSrc = resolveAssetSrc;
 
 function extFromMime(mime: string): string {
   const map: Record<string, string> = {
@@ -44,9 +32,4 @@ export async function saveAudioFile(file: File): Promise<string> {
   const buf = new Uint8Array(await file.arrayBuffer());
   const ext = extFromName(file.name) || extFromMime(file.type) || "mp3";
   return invoke<string>("save_audio", { bytes: Array.from(buf), ext });
-}
-
-const URL_RE = /^https?:\/\/\S+$/i;
-export function looksLikeUrl(text: string): boolean {
-  return URL_RE.test(text.trim());
 }

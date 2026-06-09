@@ -10,7 +10,6 @@
     "sql:allow-load",
     "sql:allow-execute",
     "sql:allow-select",
-    "sql:allow-close",
-    "fs:default"
+    "sql:allow-close"
   ]
 }

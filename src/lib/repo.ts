@@ -91,30 +91,25 @@ const toItem = (r: ItemRow): Item => ({
 
 // ---------- boards ----------
 
-/** Loads the single default board, creating it on first run. */
+/**
+ * Loads the single default board, creating it on first run. The insert is
+ * idempotent (ON CONFLICT DO NOTHING) so two concurrent first-run inits — e.g.
+ * React StrictMode double-invoking the store — can't collide on the primary key;
+ * we then read back whichever row won.
+ */
 export async function loadOrCreateDefaultBoard(): Promise<Board> {
   const db = await getDb();
+  await db.execute(
+    `INSERT INTO boards (id, name, created_at, updated_at, view_x, view_y, view_zoom)
+     VALUES ($1, $2, $3, $3, 0, 0, 1)
+     ON CONFLICT(id) DO NOTHING`,
+    [DEFAULT_BOARD_ID, "My Board", Date.now()],
+  );
   const rows = await db.select<BoardRow[]>(
     "SELECT * FROM boards WHERE id = $1",
     [DEFAULT_BOARD_ID],
   );
-  if (rows.length > 0) return toBoard(rows[0]);
-
-  const now = Date.now();
-  await db.execute(
-    `INSERT INTO boards (id, name, created_at, updated_at, view_x, view_y, view_zoom)
-     VALUES ($1, $2, $3, $3, 0, 0, 1)`,
-    [DEFAULT_BOARD_ID, "My Board", now],
-  );
-  return {
-    id: DEFAULT_BOARD_ID,
-    name: "My Board",
-    createdAt: now,
-    updatedAt: now,
-    viewX: 0,
-    viewY: 0,
-    viewZoom: 1,
-  };
+  return toBoard(rows[0]);
 }
 
 /** Persists the board's viewport (debounced by the caller). */

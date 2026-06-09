@@ -57,6 +57,10 @@ interface MusicState {
 const audio = new Audio();
 audio.loop = true;
 
+// Guards against a second init() (React StrictMode mounts effects twice in dev),
+// which would otherwise re-arm autoplay and reload the track element.
+let initStarted = false;
+
 export const useMusicStore = create<MusicState>((set, get) => {
   // Resolve a track to a playable URL (asset URL for files, direct for URLs).
   const srcFor = async (t: Track): Promise<string> => {
@@ -102,6 +106,8 @@ export const useMusicStore = create<MusicState>((set, get) => {
     ready: false,
 
     async init() {
+      if (initStarted) return;
+      initStarted = true;
       const [userTracks, sPlaying, sMuted, sVolume, sCurrent] =
         await Promise.all([
           listTracks(),

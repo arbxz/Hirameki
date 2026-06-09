@@ -1,49 +1,22 @@
-use std::fs;
-use std::path::PathBuf;
+use std::time::Duration;
 
-use tauri::{AppHandle, Manager};
-use uuid::Uuid;
+use tauri::AppHandle;
 
-// Image ingestion lives in Rust so we can (a) write binaries to a fixed,
-// scoped location under the app data dir and (b) download remote URLs without
-// hitting browser CORS. The DB stores the *relative* path returned here
-// ("images/<uuid>.<ext>"); the frontend resolves it to an asset URL at render.
+use crate::storage;
+
+// Image ingestion lives in Rust so we can (a) write binaries to a fixed, scoped
+// location under the app data dir (via storage::save_bytes) and (b) download
+// remote URLs without hitting browser CORS. The DB stores the *relative* path
+// returned here ("images/<uuid>.<ext>"); the frontend resolves it to an asset
+// URL at render.
 
 const IMAGES_SUBDIR: &str = "images";
 
-fn images_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    let dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("no app data dir: {e}"))?
-        .join(IMAGES_SUBDIR);
-    fs::create_dir_all(&dir).map_err(|e| format!("create images dir: {e}"))?;
-    Ok(dir)
-}
-
-/// Normalize a user/MIME-supplied extension to a safe lowercase token.
-fn sanitize_ext(ext: &str) -> String {
-    let cleaned: String = ext
-        .trim()
-        .trim_start_matches('.')
-        .chars()
-        .filter(|c| c.is_ascii_alphanumeric())
-        .collect::<String>()
-        .to_lowercase();
-    if cleaned.is_empty() {
-        "png".to_string()
-    } else {
-        cleaned
-    }
-}
-
-fn write_image(app: &AppHandle, bytes: &[u8], ext: &str) -> Result<String, String> {
-    let ext = sanitize_ext(ext);
-    let name = format!("{}.{}", Uuid::new_v4(), ext);
-    let path = images_dir(app)?.join(&name);
-    fs::write(&path, bytes).map_err(|e| format!("write image: {e}"))?;
-    Ok(format!("{IMAGES_SUBDIR}/{name}"))
-}
+// Caps for remote downloads. Without these a slow or oversized URL could hang
+// ingestion or exhaust memory (the body is buffered in full before writing).
+const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(30);
+const MAX_REDIRECTS: usize = 5;
+const MAX_IMAGE_BYTES: usize = 64 * 1024 * 1024; // 64 MiB
 
 /// Persist raw image bytes (from a dropped/uploaded/pasted file) and return the
 /// relative path to store in the DB.
@@ -52,7 +25,7 @@ pub fn save_image(app: AppHandle, bytes: Vec<u8>, ext: String) -> Result<String,
     if bytes.is_empty() {
         return Err("empty image".into());
     }
-    write_image(&app, &bytes, &ext)
+    storage::save_bytes(&app, IMAGES_SUBDIR, &bytes, &ext, "png")
 }
 
 fn ext_from_content_type(ct: &str) -> Option<&'static str> {
@@ -76,36 +49,73 @@ fn ext_from_url(url: &str) -> Option<String> {
     if ext.is_empty() || ext == last {
         None
     } else {
-        Some(sanitize_ext(ext))
+        Some(storage::sanitize_ext(ext, "png"))
     }
 }
 
 /// Download an image from a URL (bypassing CORS) and persist it. Returns the
-/// relative path to store in the DB.
+/// relative path to store in the DB. Enforces a timeout, a redirect limit, and a
+/// size cap so a hostile or broken URL can't hang or exhaust memory.
 #[tauri::command]
 pub async fn download_image(app: AppHandle, url: String) -> Result<String, String> {
-    let resp = reqwest::get(&url)
+    let client = reqwest::Client::builder()
+        .timeout(DOWNLOAD_TIMEOUT)
+        .redirect(reqwest::redirect::Policy::limited(MAX_REDIRECTS))
+        .build()
+        .map_err(|e| format!("client build: {e}"))?;
+
+    let mut resp = client
+        .get(&url)
+        .send()
         .await
         .map_err(|e| format!("request failed: {e}"))?;
     if !resp.status().is_success() {
         return Err(format!("download failed: HTTP {}", resp.status()));
     }
 
-    let ct_ext = resp
+    let content_type = resp
         .headers()
         .get(reqwest::header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())
-        .and_then(ext_from_content_type)
         .map(|s| s.to_string());
 
-    let bytes = resp
-        .bytes()
-        .await
-        .map_err(|e| format!("read body: {e}"))?;
+    // Reject obvious non-images up front when the server declares a type.
+    if let Some(ct) = &content_type {
+        let main = ct.split(';').next().unwrap_or("").trim();
+        if !main.is_empty() && !main.starts_with("image/") {
+            return Err(format!("not an image (content-type: {main})"));
+        }
+    }
 
-    let ext = ct_ext
+    // Honor Content-Length when present, then enforce the cap again while
+    // streaming so an absent/lying header still can't blow past the limit.
+    if let Some(len) = resp.content_length() {
+        if len as usize > MAX_IMAGE_BYTES {
+            return Err(format!("image too large: {len} bytes"));
+        }
+    }
+
+    let mut bytes: Vec<u8> = Vec::new();
+    while let Some(chunk) = resp
+        .chunk()
+        .await
+        .map_err(|e| format!("read body: {e}"))?
+    {
+        if bytes.len() + chunk.len() > MAX_IMAGE_BYTES {
+            return Err("image too large".into());
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    if bytes.is_empty() {
+        return Err("empty download".into());
+    }
+
+    let ext = content_type
+        .as_deref()
+        .and_then(ext_from_content_type)
+        .map(|s| s.to_string())
         .or_else(|| ext_from_url(&url))
         .unwrap_or_else(|| "png".to_string());
 
-    write_image(&app, &bytes, &ext)
+    storage::save_bytes(&app, IMAGES_SUBDIR, &bytes, &ext, "png")
 }

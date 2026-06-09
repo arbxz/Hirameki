@@ -13,6 +13,9 @@ import { getSetting, setSetting } from "../lib/settings";
 
 const SK = { name: "theme.name", custom: "theme.custom" } as const;
 
+// Guards against a second init() (React StrictMode mounts effects twice in dev).
+let initStarted = false;
+
 function applyTheme(theme: Theme) {
   const root = document.documentElement;
   for (const token of THEME_TOKENS) {
@@ -37,6 +40,8 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
   ready: false,
 
   async init() {
+    if (initStarted) return;
+    initStarted = true;
     const [savedName, savedCustom] = await Promise.all([
       getSetting(SK.name),
       getSetting(SK.custom),

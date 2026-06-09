@@ -96,6 +96,9 @@ type ItemGeomPatch = Partial<
   Pick<Item, "x" | "y" | "width" | "height" | "rotation" | "z" | "groupId">
 >;
 
+// Guards against a second init() (React StrictMode mounts effects twice in dev).
+let initStarted = false;
+
 export const useBoardStore = create<BoardState>((set, get) => {
   // Persist the viewport at most every 400ms.
   const persistView = debounce((boardId: string, v: { x: number; y: number; zoom: number }) => {
@@ -110,6 +113,8 @@ export const useBoardStore = create<BoardState>((set, get) => {
     error: null,
 
     async init() {
+      if (initStarted) return;
+      initStarted = true;
       try {
         const board = await loadOrCreateDefaultBoard();
         const [items, groups] = await Promise.all([
@@ -118,6 +123,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
         ]);
         set({ board, items, groups, loading: false, error: null });
       } catch (e) {
+        initStarted = false; // allow a retry after a failed load
         set({ loading: false, error: String(e) });
       }
     },
