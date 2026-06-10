@@ -273,7 +273,14 @@ export const useBoardStore = create<BoardState>((set, get) => {
     setView(view) {
       const board = get().board;
       if (!board) return;
-      set({ board: { ...board, viewX: view.x, viewY: view.y, viewZoom: view.zoom } });
+      const next = { ...board, viewX: view.x, viewY: view.y, viewZoom: view.zoom };
+      // Keep the boards array in sync too: switchBoard restores a board's
+      // viewport from this in-memory list, so it must reflect live pan/zoom —
+      // otherwise switching back snaps to the last-loaded (stale) position.
+      set({
+        board: next,
+        boards: get().boards.map((b) => (b.id === board.id ? next : b)),
+      });
       persistView(board.id, view);
     },
 

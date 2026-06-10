@@ -1,12 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Image as ImageIcon, Pencil, Plus, Trash2 } from "lucide-react";
 import { useBoardStore } from "../store/boardStore";
 import { BoardModal } from "./BoardModal";
 import { BackgroundModal } from "./BackgroundModal";
+import { ConfirmModal } from "./Modal";
 import type { Board } from "../types/board";
 
-// Folder-style board tabs across the top of the canvas. Click to switch, +
-// to create (modal), right-click for rename/background/delete.
+// Board switcher rendered as a row of buttons inside the toolbar. Click a board
+// button to switch; right-click (or the ⋯-style hover affordance) for rename /
+// background / delete; the + button creates a new board. All dialogs use the
+// shared full-screen Modal so nothing is clipped by the toolbar.
 
 type Editing =
   | { mode: "create" }
@@ -25,46 +28,68 @@ export function BoardTabs() {
   const [editing, setEditing] = useState<Editing>(null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Board | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
-  // Close any open tab context menu on an outside click.
+  // Close the context menu on an outside click.
   useEffect(() => {
     if (!menuFor) return;
-    const close = () => setMenuFor(null);
+    const close = (e: PointerEvent) => {
+      if (!menuRef.current?.contains(e.target as Node)) setMenuFor(null);
+    };
     window.addEventListener("pointerdown", close);
     return () => window.removeEventListener("pointerdown", close);
   }, [menuFor]);
 
   return (
-    <div className="ui-chrome absolute left-1/2 top-3 z-20 flex max-w-[80vw] -translate-x-1/2 items-end gap-1 overflow-x-auto">
-      {boards.map((b) => {
-        const active = b.id === activeId;
-        return (
-          <div key={b.id} className="relative shrink-0">
+    <>
+      {/* board buttons, inline in the toolbar */}
+      <div className="flex h-10 items-center gap-1 rounded-lg bg-[var(--surface)] px-1 text-[var(--text)] shadow-lg ring-1 ring-[var(--border)] backdrop-blur">
+        {boards.map((b) => {
+          const active = b.id === activeId;
+          return (
             <button
+              key={b.id}
               onClick={() => void switchBoard(b.id)}
               onContextMenu={(e) => {
                 e.preventDefault();
                 setMenuFor(b.id);
               }}
-              className={`flex items-center gap-1.5 rounded-t-lg px-3 py-1.5 text-xs shadow-lg ring-1 ring-[var(--border)] backdrop-blur transition-colors ${
+              className={`flex h-8 items-center gap-1.5 rounded px-2.5 text-xs transition-colors ${
                 active
-                  ? "bg-[var(--surface-solid)] text-[var(--text)]"
-                  : "bg-[var(--surface)] text-[var(--text-dim)] hover:bg-[var(--surface-hover)]"
+                  ? "bg-[var(--accent)]/20 text-[var(--text)]"
+                  : "text-[var(--text-dim)] hover:bg-[var(--surface-hover)]"
               }`}
-              title={b.name}
+              title={`${b.name} — right-click for options`}
             >
               <span
                 className="h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-black/20"
                 style={{ background: b.color ?? "transparent" }}
               />
-              <span className="max-w-32 truncate">{b.name}</span>
+              <span className="max-w-28 truncate">{b.name}</span>
             </button>
+          );
+        })}
 
-            {menuFor === b.id && (
-              <div
-                className="absolute left-0 top-full z-30 mt-1 w-32 overflow-hidden rounded-lg bg-[var(--surface-solid)] py-1 text-xs text-[var(--text)] shadow-2xl ring-1 ring-[var(--border)]"
-                onPointerDown={(e) => e.stopPropagation()}
-              >
+        <button
+          onClick={() => setEditing({ mode: "create" })}
+          className="grid h-8 w-8 shrink-0 place-items-center rounded text-[var(--text-dim)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
+          title="New board"
+        >
+          <Plus size={15} />
+        </button>
+      </div>
+
+      {/* context menu (fixed-position, anchored under the toolbar) */}
+      {menuFor && (
+        <div
+          ref={menuRef}
+          className="ui-chrome fixed left-4 top-14 z-[3000] w-36 overflow-hidden rounded-lg bg-[var(--surface-solid)] py-1 text-xs text-[var(--text)] shadow-2xl ring-1 ring-[var(--border)]"
+        >
+          {(() => {
+            const b = boards.find((x) => x.id === menuFor);
+            if (!b) return null;
+            return (
+              <>
                 <button
                   className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-[var(--surface-hover)]"
                   onClick={() => {
@@ -93,19 +118,11 @@ export function BoardTabs() {
                 >
                   <Trash2 size={13} /> Delete
                 </button>
-              </div>
-            )}
-          </div>
-        );
-      })}
-
-      <button
-        onClick={() => setEditing({ mode: "create" })}
-        className="grid h-8 w-8 shrink-0 place-items-center rounded-t-lg bg-[var(--surface)] text-[var(--text-dim)] shadow-lg ring-1 ring-[var(--border)] backdrop-blur hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
-        title="New board"
-      >
-        <Plus size={16} />
-      </button>
+              </>
+            );
+          })()}
+        </div>
+      )}
 
       {/* create / rename modal */}
       {editing?.mode === "create" && (
@@ -136,51 +153,23 @@ export function BoardTabs() {
         <BackgroundModal
           // Always read the live board from the store so fit toggles applied
           // inside the modal don't operate on a stale snapshot.
-          board={
-            boards.find((b) => b.id === editing.board.id) ?? editing.board
-          }
+          board={boards.find((b) => b.id === editing.board.id) ?? editing.board}
           onClose={() => setEditing(null)}
         />
       )}
 
       {/* delete confirmation */}
       {pendingDelete && (
-        <div
-          className="ui-chrome absolute inset-0 z-[4000] grid h-screen w-screen place-items-center bg-black/50"
-          style={{ position: "fixed" }}
-          onMouseDown={() => setPendingDelete(null)}
-        >
-          <div
-            className="w-80 rounded-xl bg-[var(--surface-solid)] p-5 text-[var(--text)] shadow-2xl ring-1 ring-[var(--border)]"
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <h2 className="text-sm font-semibold">
-              Delete “{pendingDelete.name}”?
-            </h2>
-            <p className="mt-1 text-xs text-[var(--text-dim)]">
-              All images and groups on this board will be removed. This can't be
-              undone.
-            </p>
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                className="rounded-lg px-3 py-1.5 text-xs text-[var(--text-dim)] hover:bg-[var(--surface-hover)]"
-                onClick={() => setPendingDelete(null)}
-              >
-                Cancel
-              </button>
-              <button
-                className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-500"
-                onClick={() => {
-                  void deleteBoard(pendingDelete.id);
-                  setPendingDelete(null);
-                }}
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmModal
+          title={`Delete “${pendingDelete.name}”?`}
+          message="All images and groups on this board will be removed. This can't be undone."
+          onConfirm={() => {
+            void deleteBoard(pendingDelete.id);
+            setPendingDelete(null);
+          }}
+          onClose={() => setPendingDelete(null)}
+        />
       )}
-    </div>
+    </>
   );
 }

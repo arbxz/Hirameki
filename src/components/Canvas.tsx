@@ -15,6 +15,8 @@ import { ingestDataTransfer, ingestFiles } from "../lib/ingest";
 import { ItemView } from "./ItemView";
 import { SelectionLayer } from "./SelectionLayer";
 import { BoardBackground } from "./BoardBackground";
+import { BoardTabs } from "./BoardTabs";
+import { ConfirmModal } from "./Modal";
 
 // Phase 4: items can be selected (click / shift-click / marquee), then dragged,
 // resized, rotated, reordered, and deleted. Navigation (Space-pan, Ctrl-zoom)
@@ -326,8 +328,10 @@ export function Canvas() {
         useWheelScroll
         useWheelPinch
         useAutoZoom
+        useGesture
         wheelPinchKey="ctrl"
-        maxPinchWheel={1}
+        wheelScale={0.035}
+        maxPinchWheel={3}
         zoomRange={[MIN_ZOOM, MAX_ZOOM]}
         onScroll={(e) => {
           setScroll({ x: e.scrollLeft, y: e.scrollTop });
@@ -384,16 +388,18 @@ export function Canvas() {
       )}
 
       {/* toolbar */}
-      <div className="ui-chrome absolute left-4 top-4 flex items-center gap-2">
+      <div className="ui-chrome absolute left-4 top-4 flex max-w-[calc(100vw-2rem)] flex-wrap items-center gap-2">
+        {/* board switcher */}
+        <BoardTabs />
         <button
-          className="flex items-center gap-1.5 rounded-lg bg-[var(--surface)] px-3 py-1.5 text-xs text-[var(--text)] shadow-lg ring-1 ring-[var(--border)] backdrop-blur hover:bg-[var(--surface-hover)]"
+          className="flex h-10 items-center gap-1.5 rounded-lg bg-[var(--surface)] px-3 text-xs text-[var(--text)] shadow-lg ring-1 ring-[var(--border)] backdrop-blur hover:bg-[var(--surface-hover)]"
           onClick={() => fileInputRef.current?.click()}
         >
           <ImagePlus size={14} />
           Upload images
         </button>
         {selectedIds.length > 0 && (
-          <div className="flex items-center gap-1 rounded-lg bg-[var(--surface)] p-1 text-[var(--text)] shadow-lg ring-1 ring-[var(--border)] backdrop-blur">
+          <div className="flex h-10 items-center gap-1 rounded-lg bg-[var(--surface)] px-1 text-[var(--text)] shadow-lg ring-1 ring-[var(--border)] backdrop-blur">
             <button
               className={chip}
               onClick={() => bringToFront(selectedIds)}
@@ -435,7 +441,7 @@ export function Canvas() {
             </button>
           </div>
         )}
-        <span className="select-none text-xs text-[var(--text-dim)]">
+        <span className="flex h-10 select-none items-center px-1 text-xs text-[var(--text-dim)]">
           {loading
             ? "loading…"
             : `${items.length} items${
@@ -469,35 +475,16 @@ export function Canvas() {
         </button>
       </div>
 
-      {/* delete confirmation — must sit above moveable's control box (z-index
-          3000), so use an explicit higher z-index */}
+      {/* delete confirmation */}
       {pendingDelete && (
-        <div className="ui-chrome absolute inset-0 z-[4000] grid place-items-center bg-black/50">
-          <div className="w-80 rounded-xl bg-[var(--surface-solid)] p-5 text-[var(--text)] shadow-2xl ring-1 ring-[var(--border)]">
-            <h2 className="text-sm font-semibold">
-              Delete {pendingDelete.length}{" "}
-              {pendingDelete.length === 1 ? "image" : "images"}?
-            </h2>
-            <p className="mt-1 text-xs text-[var(--text-dim)]">
-              This can't be undone.
-            </p>
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                className="rounded-lg px-3 py-1.5 text-xs text-[var(--text-dim)] hover:bg-[var(--surface-hover)]"
-                onClick={() => setPendingDelete(null)}
-              >
-                Cancel
-              </button>
-              <button
-                autoFocus
-                className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-500"
-                onClick={confirmDelete}
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmModal
+          title={`Delete ${pendingDelete.length} ${
+            pendingDelete.length === 1 ? "image" : "images"
+          }?`}
+          message="This can't be undone."
+          onConfirm={confirmDelete}
+          onClose={() => setPendingDelete(null)}
+        />
       )}
     </div>
   );
