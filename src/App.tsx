@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { Canvas } from "./components/Canvas";
+import { BoardTabs } from "./components/BoardTabs";
 import { MusicWidget } from "./components/MusicWidget";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { useBoardStore } from "./store/boardStore";
@@ -14,6 +15,7 @@ function App() {
   return (
     <>
       <Canvas />
+      <BoardTabs />
       <MusicWidget />
       <SettingsPanel />
       {error && (

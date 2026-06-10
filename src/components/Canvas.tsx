@@ -14,6 +14,7 @@ import { useBoardStore } from "../store/boardStore";
 import { ingestDataTransfer, ingestFiles } from "../lib/ingest";
 import { ItemView } from "./ItemView";
 import { SelectionLayer } from "./SelectionLayer";
+import { BoardBackground } from "./BoardBackground";
 
 // Phase 4: items can be selected (click / shift-click / marquee), then dragged,
 // resized, rotated, reordered, and deleted. Navigation (Space-pan, Ctrl-zoom)
@@ -217,11 +218,11 @@ export function Canvas() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [addItem, setError]);
 
-  // Restore the persisted viewport once the board is loaded. Deferred to the
-  // next frame: InfiniteViewer must finish measuring its container before
-  // scrollTo/setZoom take effect, otherwise the restore silently no-ops and the
-  // canvas opens at the origin/default zoom.
-  const restored = useRef(false);
+  // Restore the persisted viewport whenever the active board changes (initial
+  // load AND tab switches). Deferred to the next frame: InfiniteViewer must
+  // finish measuring its container before scrollTo/setZoom take effect,
+  // otherwise the restore silently no-ops and the canvas opens at origin.
+  const restoredBoardId = useRef<string | null>(null);
   // True while we're programmatically restoring. InfiniteViewer re-emits `scroll`
   // events in response to setZoom/scrollTo (and again a frame later via its own
   // scroll-correction). Those echoes must NOT persist, or they overwrite the
@@ -229,8 +230,10 @@ export function Canvas() {
   // corrupts the stored position on the *next* launch.
   const restoringRef = useRef(false);
   useEffect(() => {
-    if (!board || restored.current) return;
-    restored.current = true;
+    if (!board || restoredBoardId.current === board.id) return;
+    restoredBoardId.current = board.id;
+    // Switching boards: drop the old board's selection.
+    setSelectedIds([]);
     const { viewZoom, viewX, viewY } = board;
     restoringRef.current = true;
     const raf = requestAnimationFrame(() => {
@@ -302,6 +305,9 @@ export function Canvas() {
         spaceHeld ? "cursor-grab active:cursor-grabbing" : ""
       }`}
     >
+      {/* fixed per-board background image/gif (does not pan/zoom) */}
+      <BoardBackground />
+
       {/* dot grid that tracks the viewport transform */}
       <div
         className="pointer-events-none absolute inset-0"

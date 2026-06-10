@@ -1,16 +1,25 @@
 import { create } from "zustand";
 import type { Board, Group, Item } from "../types/board";
 import {
+  createBoard as repoCreateBoard,
   createGroup as repoCreateGroup,
   createItem as repoCreateItem,
+  deleteBoard as repoDeleteBoard,
   deleteGroup as repoDeleteGroup,
   deleteItem as repoDeleteItem,
+  listBoards,
   listGroups,
   listItems,
   loadOrCreateDefaultBoard,
+  reorderBoards as repoReorderBoards,
   saveBoardView,
+  updateBoardBackground as repoUpdateBoardBackground,
+  updateBoardMeta as repoUpdateBoardMeta,
   updateItem as repoUpdateItem,
 } from "../lib/repo";
+import { getSetting, setSetting } from "../lib/settings";
+
+const ACTIVE_BOARD_KEY = "board.activeId";
 
 // Debounce helper for write-back of high-frequency state (viewport, drags).
 // Exposes `flush()` to fire any pending call immediately (used on app close so
@@ -47,13 +56,42 @@ function debounce<A extends unknown[]>(
 
 interface BoardState {
   board: Board | null;
+  boards: Board[];
   groups: Group[];
   items: Item[];
   loading: boolean;
   error: string | null;
 
-  /** Load (or create) the default board and its contents from SQLite. */
+  /** Load all boards and open the last-active one (or the default). */
   init: () => Promise<void>;
+
+  /** Switch to another board, loading its contents. */
+  switchBoard: (id: string) => Promise<void>;
+
+  /** Create a new board (title + optional color tag) and switch to it. */
+  createBoard: (name: string, color: string | null) => Promise<Board | null>;
+
+  /** Rename / recolor a board's tab. */
+  updateBoard: (
+    id: string,
+    patch: { name?: string; color?: string | null },
+  ) => Promise<void>;
+
+  /**
+   * Set or clear a board's fixed background. Source is an imported file path
+   * OR a remote URL (or null to remove); fit is cover/contain.
+   */
+  setBoardBackground: (
+    boardId: string,
+    source: { filePath?: string | null; url?: string | null } | null,
+    fit: "cover" | "contain",
+  ) => Promise<void>;
+
+  /** Delete a board and all its contents. Refuses to delete the last board. */
+  deleteBoard: (id: string) => Promise<void>;
+
+  /** Persist a new left-to-right tab order. */
+  reorderBoards: (orderedIds: string[]) => Promise<void>;
 
   /** Persist the viewport; debounced so panning doesn't hammer the DB. */
   setView: (view: { x: number; y: number; zoom: number }) => void;
@@ -105,8 +143,19 @@ export const useBoardStore = create<BoardState>((set, get) => {
     void saveBoardView(boardId, v);
   }, 400);
 
+  // Load a board's groups + items into state (shared by init/switch/create).
+  const openBoard = async (board: Board) => {
+    const [items, groups] = await Promise.all([
+      listItems(board.id),
+      listGroups(board.id),
+    ]);
+    set({ board, items, groups, error: null });
+    void setSetting(ACTIVE_BOARD_KEY, board.id);
+  };
+
   return {
     board: null,
+    boards: [],
     groups: [],
     items: [],
     loading: true,
@@ -116,15 +165,108 @@ export const useBoardStore = create<BoardState>((set, get) => {
       if (initStarted) return;
       initStarted = true;
       try {
-        const board = await loadOrCreateDefaultBoard();
-        const [items, groups] = await Promise.all([
-          listItems(board.id),
-          listGroups(board.id),
+        // Ensure the default board exists on first run, then load the full set.
+        await loadOrCreateDefaultBoard();
+        const [boards, activeId] = await Promise.all([
+          listBoards(),
+          getSetting(ACTIVE_BOARD_KEY),
         ]);
-        set({ board, items, groups, loading: false, error: null });
+        const active =
+          boards.find((b) => b.id === activeId) ?? boards[0];
+        set({ boards });
+        await openBoard(active);
+        set({ loading: false });
       } catch (e) {
         initStarted = false; // allow a retry after a failed load
         set({ loading: false, error: String(e) });
+      }
+    },
+
+    async switchBoard(id) {
+      const { board: current, boards } = get();
+      if (current?.id === id) return;
+      // Flush any pending viewport write for the board we're leaving.
+      persistView.flush();
+      const target = boards.find((b) => b.id === id);
+      if (!target) return;
+      try {
+        await openBoard(target);
+      } catch (e) {
+        set({ error: String(e) });
+      }
+    },
+
+    async createBoard(name, color) {
+      try {
+        const board = await repoCreateBoard(name, color);
+        persistView.flush();
+        set({ boards: [...get().boards, board] });
+        await openBoard(board);
+        return board;
+      } catch (e) {
+        set({ error: String(e) });
+        return null;
+      }
+    },
+
+    async updateBoard(id, patch) {
+      set({
+        boards: get().boards.map((b) =>
+          b.id === id ? { ...b, ...patch } : b,
+        ),
+        board:
+          get().board?.id === id
+            ? { ...(get().board as Board), ...patch }
+            : get().board,
+      });
+      await repoUpdateBoardMeta(id, patch);
+    },
+
+    async deleteBoard(id) {
+      const { boards, board } = get();
+      if (boards.length <= 1) {
+        set({ error: "Can't delete the last board." });
+        return;
+      }
+      const remaining = boards.filter((b) => b.id !== id);
+      set({ boards: remaining });
+      await repoDeleteBoard(id);
+      // If we deleted the active board, open a neighbour.
+      if (board?.id === id) {
+        await openBoard(remaining[0]);
+      }
+    },
+
+    async reorderBoards(orderedIds) {
+      const byId = new Map(get().boards.map((b) => [b.id, b]));
+      const reordered = orderedIds
+        .map((bid, i) => {
+          const b = byId.get(bid);
+          return b ? { ...b, position: i } : null;
+        })
+        .filter((b): b is Board => b !== null);
+      set({ boards: reordered });
+      await repoReorderBoards(orderedIds);
+    },
+
+    async setBoardBackground(boardId, source, fit) {
+      const patch = {
+        bgPath: source?.filePath ?? null,
+        bgUrl: source?.url ?? null,
+        bgFit: fit,
+      };
+      const active = get().board;
+      set({
+        board:
+          active?.id === boardId ? { ...active, ...patch } : active,
+        boards: get().boards.map((b) =>
+          b.id === boardId ? { ...b, ...patch } : b,
+        ),
+      });
+      try {
+        await repoUpdateBoardBackground(boardId, source, fit);
+      } catch (e) {
+        set({ error: String(e) });
       }
     },
 

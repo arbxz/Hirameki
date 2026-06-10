@@ -21,6 +21,7 @@ const WIPE_ORDER = ["items", "groups", "tracks", "settings", "boards"];
 const TABLE_COLUMNS: Record<string, ReadonlySet<string>> = {
   boards: new Set([
     "id", "name", "created_at", "updated_at", "view_x", "view_y", "view_zoom",
+    "color", "position", "bg_path", "bg_url", "bg_fit",
   ]),
   groups: new Set([
     "id", "board_id", "title", "x", "y", "width", "height", "color", "z",
@@ -78,6 +79,9 @@ function assetPaths(m: Manifest): string[] {
   }
   for (const tr of m.tracks ?? []) {
     if (typeof tr.file_path === "string") paths.push(tr.file_path);
+  }
+  for (const b of m.boards ?? []) {
+    if (typeof b.bg_path === "string") paths.push(b.bg_path);
   }
   return [...new Set(paths)];
 }

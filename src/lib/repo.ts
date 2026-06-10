@@ -17,6 +17,11 @@ interface BoardRow {
   view_x: number;
   view_y: number;
   view_zoom: number;
+  color: string | null;
+  position: number;
+  bg_path: string | null;
+  bg_url: string | null;
+  bg_fit: string;
 }
 
 interface GroupRow {
@@ -57,6 +62,11 @@ const toBoard = (r: BoardRow): Board => ({
   viewX: r.view_x,
   viewY: r.view_y,
   viewZoom: r.view_zoom,
+  color: r.color,
+  position: r.position,
+  bgPath: r.bg_path,
+  bgUrl: r.bg_url,
+  bgFit: r.bg_fit === "contain" ? "contain" : "cover",
 });
 
 const toGroup = (r: GroupRow): Group => ({
@@ -100,8 +110,8 @@ const toItem = (r: ItemRow): Item => ({
 export async function loadOrCreateDefaultBoard(): Promise<Board> {
   const db = await getDb();
   await db.execute(
-    `INSERT INTO boards (id, name, created_at, updated_at, view_x, view_y, view_zoom)
-     VALUES ($1, $2, $3, $3, 0, 0, 1)
+    `INSERT INTO boards (id, name, created_at, updated_at, view_x, view_y, view_zoom, position)
+     VALUES ($1, $2, $3, $3, 0, 0, 1, 0)
      ON CONFLICT(id) DO NOTHING`,
     [DEFAULT_BOARD_ID, "My Board", Date.now()],
   );
@@ -110,6 +120,113 @@ export async function loadOrCreateDefaultBoard(): Promise<Board> {
     [DEFAULT_BOARD_ID],
   );
   return toBoard(rows[0]);
+}
+
+/** All boards in tab order (left to right). */
+export async function listBoards(): Promise<Board[]> {
+  const db = await getDb();
+  const rows = await db.select<BoardRow[]>(
+    "SELECT * FROM boards ORDER BY position ASC, created_at ASC",
+  );
+  return rows.map(toBoard);
+}
+
+/** Create a new empty board placed after all existing tabs. */
+export async function createBoard(
+  name: string,
+  color: string | null,
+): Promise<Board> {
+  const db = await getDb();
+  const maxRows = await db.select<{ m: number | null }[]>(
+    "SELECT MAX(position) AS m FROM boards",
+  );
+  const position = (maxRows[0]?.m ?? -1) + 1;
+  const now = Date.now();
+  const board: Board = {
+    id: uuid(),
+    name: name.trim() || "Untitled",
+    createdAt: now,
+    updatedAt: now,
+    viewX: 0,
+    viewY: 0,
+    viewZoom: 1,
+    color,
+    position,
+    bgPath: null,
+    bgUrl: null,
+    bgFit: "cover",
+  };
+  await db.execute(
+    `INSERT INTO boards
+       (id, name, created_at, updated_at, view_x, view_y, view_zoom, color, position)
+     VALUES ($1,$2,$3,$3,0,0,1,$4,$5)`,
+    [board.id, board.name, now, board.color, board.position],
+  );
+  return board;
+}
+
+/** Rename / recolor a board. */
+export async function updateBoardMeta(
+  id: string,
+  patch: { name?: string; color?: string | null },
+): Promise<void> {
+  const db = await getDb();
+  const sets: string[] = [];
+  const vals: unknown[] = [];
+  let i = 1;
+  if (patch.name !== undefined) {
+    sets.push(`name = $${i++}`);
+    vals.push(patch.name);
+  }
+  if (patch.color !== undefined) {
+    sets.push(`color = $${i++}`);
+    vals.push(patch.color);
+  }
+  if (sets.length === 0) return;
+  sets.push(`updated_at = $${i++}`);
+  vals.push(Date.now());
+  vals.push(id);
+  await db.execute(`UPDATE boards SET ${sets.join(", ")} WHERE id = $${i}`, vals);
+}
+
+/**
+ * Set (or clear) a board's fixed background. Pass source = null to remove it.
+ * Exactly one of filePath / url is set when a background is present.
+ */
+export async function updateBoardBackground(
+  id: string,
+  source: { filePath?: string | null; url?: string | null } | null,
+  fit: "cover" | "contain",
+): Promise<void> {
+  const db = await getDb();
+  await db.execute(
+    `UPDATE boards SET bg_path = $1, bg_url = $2, bg_fit = $3, updated_at = $4
+     WHERE id = $5`,
+    [
+      source?.filePath ?? null,
+      source?.url ?? null,
+      fit,
+      Date.now(),
+      id,
+    ],
+  );
+}
+
+/** Delete a board and (via FK cascade) all its groups and items. */
+export async function deleteBoard(id: string): Promise<void> {
+  const db = await getDb();
+  await db.execute("DELETE FROM boards WHERE id = $1", [id]);
+}
+
+/** Persist a new tab order (array of board ids, left to right). */
+export async function reorderBoards(orderedIds: string[]): Promise<void> {
+  const db = await getDb();
+  for (let i = 0; i < orderedIds.length; i++) {
+    await db.execute("UPDATE boards SET position = $1 WHERE id = $2", [
+      i,
+      orderedIds[i],
+    ]);
+  }
 }
 
 /** Persists the board's viewport (debounced by the caller). */

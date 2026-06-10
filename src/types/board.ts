@@ -10,6 +10,16 @@ export interface Board {
   viewX: number;
   viewY: number;
   viewZoom: number;
+  /** Optional color tag shown on the board's folder tab. */
+  color: string | null;
+  /** Tab order; lower is further left. */
+  position: number;
+  /** Imported background file (relative path under app images dir), or null. */
+  bgPath: string | null;
+  /** Remote background image/gif URL, or null. */
+  bgUrl: string | null;
+  /** How the background fills the viewport. */
+  bgFit: "cover" | "contain";
 }
 
 export interface Group {

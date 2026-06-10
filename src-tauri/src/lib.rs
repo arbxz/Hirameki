@@ -20,6 +20,18 @@ pub fn run() {
             sql: include_str!("../migrations/002_settings_audio.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 3,
+            description: "board_tabs",
+            sql: include_str!("../migrations/003_board_tabs.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 4,
+            description: "board_background",
+            sql: include_str!("../migrations/004_board_background.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
