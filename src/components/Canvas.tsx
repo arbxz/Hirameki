@@ -303,7 +303,7 @@ export function Canvas() {
         if (e.relatedTarget === null) setDragOver(false);
       }}
       onDrop={onDrop}
-      className={`relative h-screen w-screen select-none overflow-hidden bg-[var(--bg)] ${
+      className={`relative h-full w-full select-none overflow-hidden bg-[var(--bg)] ${
         spaceHeld ? "cursor-grab active:cursor-grabbing" : ""
       }`}
     >
