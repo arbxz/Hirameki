@@ -23,13 +23,14 @@ export function TitleBar() {
   return (
     <div
       data-tauri-drag-region
+      onDoubleClick={() => appWindow.toggleMaximize()}
       className="flex h-8 shrink-0 items-center justify-between border-b border-[var(--border)] bg-[var(--surface-solid)] pl-3 text-[var(--text-dim)] select-none"
     >
       <span data-tauri-drag-region className="text-xs font-medium tracking-wide">
         Hirameki
       </span>
 
-      <div className="flex h-full">
+      <div className="flex h-full" onDoubleClick={(e) => e.stopPropagation()}>
         <button
           aria-label="Minimize"
           onClick={() => appWindow.minimize()}

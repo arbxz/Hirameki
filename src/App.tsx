@@ -5,12 +5,18 @@ import { SettingsPanel } from "./components/SettingsPanel";
 import { TitleBar } from "./components/TitleBar";
 import { useBoardStore } from "./store/boardStore";
 import { installSelectionGuard } from "./lib/preventSelection";
+import { checkForUpdates } from "./lib/updater";
 
 function App() {
   const error = useBoardStore((s) => s.error);
 
   // Suppress drag-to-highlight across the whole app.
   useEffect(() => installSelectionGuard(), []);
+
+  // Quietly check for updates on launch; only surfaces a prompt if one exists.
+  useEffect(() => {
+    void checkForUpdates({ silent: true });
+  }, []);
 
   return (
     <div className="flex h-full flex-col">

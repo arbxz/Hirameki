@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   Download,
   Palette,
+  RefreshCw,
   Settings,
   Upload,
   X,
@@ -10,6 +11,7 @@ import { useThemeStore } from "../store/themeStore";
 import { PRESETS, THEME_TOKENS, type Theme } from "../lib/themes";
 import { exportBundle, importBundle } from "../lib/exportImport";
 import { useBoardStore } from "../store/boardStore";
+import { checkForUpdates } from "../lib/updater";
 
 // Settings panel (top-right, ui-chrome). Theme presets + a custom color editor,
 // plus full-board export/import. Mostly themes the background and UI chrome.
@@ -38,6 +40,16 @@ export function SettingsPanel() {
 
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<null | "export" | "import">(null);
+  const [checking, setChecking] = useState(false);
+
+  const doCheckUpdates = async () => {
+    setChecking(true);
+    try {
+      await checkForUpdates({ silent: false });
+    } finally {
+      setChecking(false);
+    }
+  };
 
   useEffect(() => {
     void init();
@@ -162,6 +174,19 @@ export function SettingsPanel() {
               Export bundles every image &amp; sound into one file. Import
               replaces the current board.
             </p>
+          </div>
+
+          {/* app / updates */}
+          <div className="mt-3 border-t border-[var(--border)] pt-3">
+            <div className="mb-1.5 text-xs font-semibold">App</div>
+            <button
+              onClick={doCheckUpdates}
+              disabled={checking}
+              className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--surface-hover)] px-2 py-1.5 text-xs hover:opacity-80 disabled:opacity-40"
+            >
+              <RefreshCw size={14} className={checking ? "animate-spin" : ""} />
+              {checking ? "Checking…" : "Check for updates"}
+            </button>
           </div>
         </div>
       )}

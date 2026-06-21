@@ -34,7 +34,8 @@ pub fn run() {
         },
     ];
 
-    tauri::Builder::default()
+    #[allow(unused_mut)]
+    let mut builder = tauri::Builder::default()
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level(log::LevelFilter::Info)
@@ -46,7 +47,18 @@ pub fn run() {
             SqlBuilder::default()
                 .add_migrations("sqlite:inspo.db", migrations)
                 .build(),
-        )
+        );
+
+    // Self-updater + process (relaunch after install) are desktop-only;
+    // mobile stores handle their own updates.
+    #[cfg(desktop)]
+    {
+        builder = builder
+            .plugin(tauri_plugin_updater::Builder::new().build())
+            .plugin(tauri_plugin_process::init());
+    }
+
+    builder
         .invoke_handler(tauri::generate_handler![
             images::save_image,
             images::download_image,
