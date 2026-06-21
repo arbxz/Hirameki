@@ -1,6 +1,6 @@
 [package]
 name = "hirameki"
-version = "0.1.0"
+version = "0.2.0"
 description = "Hirameki — a visual inspiration mood board"
 authors = ["arbxz"]
 edition = "2021"
