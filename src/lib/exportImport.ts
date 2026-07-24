@@ -45,7 +45,7 @@ type Manifest = Record<string, Row[]>;
  * across the wipe+insert isn't available here — validating up front is what
  * keeps a bad import from destroying the current board.)
  */
-function validateManifest(m: Manifest): void {
+export function validateManifest(m: Manifest): void {
   for (const [table, rows] of Object.entries(m)) {
     const allowed = TABLE_COLUMNS[table];
     if (!allowed) throw new Error(`unknown table in bundle: ${table}`);
