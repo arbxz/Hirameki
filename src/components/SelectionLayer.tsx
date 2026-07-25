@@ -234,6 +234,8 @@ export function SelectionLayer({
           const t = (e.inputEvent?.target as HTMLElement) ?? null;
           if (t?.closest?.(".moveable-control-box")) return false;
           if (t?.closest?.(".ui-chrome")) return false;
+          // Notes have their own drag/resize; don't start a marquee on them.
+          if (t?.closest?.(".sticky-note")) return false;
           return true;
         }}
         onSelect={(e) => {

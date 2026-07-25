@@ -47,9 +47,9 @@ Tauri commands are registered in [src-tauri/src/lib.rs](src-tauri/src/lib.rs): `
 
 ### Data model & persistence
 
-Schema lives in [src-tauri/migrations/](src-tauri/migrations/) (versioned `.sql` files, applied in order). Three core tables — `boards`, `groups`, `items` — plus `settings` (key/value) and `tracks` (music). Boards cascade-delete their groups and items via FK.
+Schema lives in [src-tauri/migrations/](src-tauri/migrations/) (versioned `.sql` files, applied in order). Core canvas tables — `boards`, `groups`, `items`, `notes` — plus `settings` (key/value) and `tracks` (music). Everything is scoped to a board and cascade-deletes via FK.
 
-- **DB columns are `snake_case`; app types are `camelCase`.** [src/lib/repo.ts](src/lib/repo.ts) is the *only* place that knows both — it owns all SQL and the row⇄domain mapping (`toBoard`/`toItem`/`toGroup`). Everything above it works purely in the domain types from [src/types/board.ts](src/types/board.ts). Add a column → update the migration, the `*Row` interface, the mapper, and the type.
+- **DB columns are `snake_case`; app types are `camelCase`.** [src/lib/repo.ts](src/lib/repo.ts) owns the SQL + row⇄domain mapping for `boards`/`groups`/`items`; the parallel [src/lib/notes.ts](src/lib/notes.ts) (notes) and [src/lib/tracks.ts](src/lib/tracks.ts) (music) do the same for their own tables. Everything above these works purely in the domain types. Add a column → update the migration, the `*Row` interface, the mapper, and the type.
 - **Binary assets are never stored in the DB.** Files are written to `<app_data>/images/<uuid>.<ext>` and `<app_data>/audio/...`; the DB stores only the *relative* path. The front end resolves that back to a loadable URL with `convertFileSrc` via [src/lib/assets.ts](src/lib/assets.ts) `resolveAssetSrc`. The asset protocol is scoped to `$APPDATA/**` in [tauri.conf.json](src-tauri/tauri.conf.json).
 
 ### State: Zustand stores
@@ -70,6 +70,31 @@ Play/mute/volume/theme/active-board and other prefs persist to the `settings` ta
 - The dot grid is a CSS `radial-gradient` background whose size/position is driven manually from `zoom`/`scroll` — it is *not* inside the transformed viewport.
 - `SelectionLayer` renders in **screen space** (outside the scaled viewport) so moveable's control box aligns; it's fed the live `viewport` transform to convert coordinates.
 - WebView2 hijacks Ctrl+wheel for native zoom, so a passive-false wheel handler `preventDefault()`s it.
+
+### Sticky notes
+
+Notes are text cards on the canvas, deliberately kept **independent of the image
+manipulation system**. Images use the `react-moveable`/`react-selecto` layer; notes
+instead have their own `notes` table, a boardStore slice (`addNote`/`patchNoteText`/
+`commitNoteGeom`/`setNoteStyle`/`removeNote`/`bringNoteToFront`), and self-contained
+pointer-based drag (by the header) + resize (by the corner) in
+[src/components/NoteView.tsx](src/components/NoteView.tsx) — screen deltas convert to
+world units via `/ zoom`. Notes render in the world div *after* items (always above
+images; z-order applies among notes only). The only cross-cutting touch is Canvas's
+`Selecto` `dragCondition`, which excludes `.sticky-note` so note interactions don't
+start a marquee. Styling/persistence live in [src/lib/notes.ts](src/lib/notes.ts):
+`color` is a fixed-palette key or `null` (= follow `--accent` via `color-mix`, so
+uncolored notes restyle with the theme); `glass` toggles a frosted background;
+`fontSize` is a per-note base text size set by the header A−/A+ stepper (walks the
+`NOTE_FONT_SIZES` ladder via `stepFontSize`). Note text is persisted **debounced**
+(per-note) so typing doesn't hammer the DB. New notes are created from the top-right
+button ([SettingsPanel](src/components/SettingsPanel.tsx)) or the canvas right-click menu.
+
+**Zoom legibility** (in NoteView, purely visual — nothing persisted): body text
+scales **literally** with the canvas (size is set manually via A−/A+; there is no
+auto floor). Only the header icons + resize handle get a **mild sqrt-dampened,
+clamped counter-scale** so they shrink more gently when zoomed out — derived from
+the `zoom` prop Canvas passes down.
 
 ### Ingestion pipeline
 

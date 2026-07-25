@@ -17,6 +17,14 @@ import {
   updateBoardMeta as repoUpdateBoardMeta,
   updateItem as repoUpdateItem,
 } from "../lib/repo";
+import {
+  createNote as repoCreateNote,
+  deleteNote as repoDeleteNote,
+  listNotes,
+  updateNote as repoUpdateNote,
+  type Note,
+  type NoteColorKey,
+} from "../lib/notes";
 import { getSetting, setSetting } from "../lib/settings";
 
 const ACTIVE_BOARD_KEY = "board.activeId";
@@ -59,6 +67,7 @@ interface BoardState {
   boards: Board[];
   groups: Group[];
   items: Item[];
+  notes: Note[];
   loading: boolean;
   error: string | null;
 
@@ -127,6 +136,32 @@ interface BoardState {
   /** Lower the given items below all others, preserving their relative order. */
   sendToBack: (ids: string[]) => void;
 
+  // ----- notes -----
+
+  /**
+   * Create a note. With no `at`, it's placed near the top-left of the current
+   * viewport (using the live board view); `at` supplies exact world coords
+   * (e.g. from the right-click menu).
+   */
+  addNote: (at?: { x: number; y: number }) => Promise<Note | null>;
+  /** Update a note's text (in memory now, persisted debounced while typing). */
+  patchNoteText: (id: string, text: string) => void;
+  /** Commit a note's geometry after a drag/resize (persisted immediately). */
+  commitNoteGeom: (
+    id: string,
+    geom: { x: number; y: number; width: number; height: number },
+  ) => void;
+  /** Change a note's color, glass flag, and/or font size (persisted immediately). */
+  setNoteStyle: (
+    id: string,
+    patch: { color?: NoteColorKey | null; glass?: boolean; fontSize?: number },
+  ) => void;
+  removeNote: (id: string) => Promise<void>;
+  /** Raise a note above all other notes. */
+  bringNoteToFront: (id: string) => void;
+  /** Flush any pending debounced note-text writes now (board switch / close). */
+  flushNotes: () => void;
+
   setError: (error: string | null) => void;
 }
 
@@ -143,13 +178,29 @@ export const useBoardStore = create<BoardState>((set, get) => {
     void saveBoardView(boardId, v);
   }, 400);
 
-  // Load a board's groups + items into state (shared by init/switch/create).
+  // Per-note debounced text writers: typing shouldn't hit the DB on every
+  // keystroke. Created lazily per id; flushed on board switch / app close.
+  const noteTextWriters = new Map<string, Debounced<[string]>>();
+  const noteTextWriter = (id: string): Debounced<[string]> => {
+    let w = noteTextWriters.get(id);
+    if (!w) {
+      w = debounce((text: string) => void repoUpdateNote(id, { text }), 500);
+      noteTextWriters.set(id, w);
+    }
+    return w;
+  };
+  const flushNoteWriters = () => {
+    for (const w of noteTextWriters.values()) w.flush();
+  };
+
+  // Load a board's groups + items + notes into state (init/switch/create).
   const openBoard = async (board: Board) => {
-    const [items, groups] = await Promise.all([
+    const [items, groups, notes] = await Promise.all([
       listItems(board.id),
       listGroups(board.id),
+      listNotes(board.id),
     ]);
-    set({ board, items, groups, error: null });
+    set({ board, items, groups, notes, error: null });
     void setSetting(ACTIVE_BOARD_KEY, board.id);
   };
 
@@ -158,6 +209,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
     boards: [],
     groups: [],
     items: [],
+    notes: [],
     loading: true,
     error: null,
 
@@ -185,8 +237,9 @@ export const useBoardStore = create<BoardState>((set, get) => {
     async switchBoard(id) {
       const { board: current, boards } = get();
       if (current?.id === id) return;
-      // Flush any pending viewport write for the board we're leaving.
+      // Flush any pending viewport / note-text writes for the board we're leaving.
       persistView.flush();
+      flushNoteWriters();
       const target = boards.find((b) => b.id === id);
       if (!target) return;
       try {
@@ -200,6 +253,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
       try {
         const board = await repoCreateBoard(name, color);
         persistView.flush();
+        flushNoteWriters();
         set({ boards: [...get().boards, board] });
         await openBoard(board);
         return board;
@@ -434,6 +488,77 @@ export const useBoardStore = create<BoardState>((set, get) => {
         patch: { z: minZ - lowered.length + i },
       }));
       get().patchItems(updates);
+    },
+
+    // ----- notes -----
+
+    async addNote(at) {
+      const board = get().board;
+      if (!board) return null;
+      const notes = get().notes;
+      const maxZ = notes.reduce((m, n) => Math.max(m, n.z), 0);
+      // Default placement: near the top-left of the current viewport, cascaded
+      // so successive notes don't stack exactly. `at` overrides with world coords.
+      const cascade = (notes.length % 6) * 24;
+      const x = at ? at.x : board.viewX + (80 + cascade) / board.viewZoom;
+      const y = at ? at.y : board.viewY + (80 + cascade) / board.viewZoom;
+      try {
+        const note = await repoCreateNote(board.id, {
+          x,
+          y,
+          width: 220,
+          height: 200,
+          z: maxZ + 1,
+        });
+        set({ notes: [...get().notes, note] });
+        return note;
+      } catch (e) {
+        set({ error: String(e) });
+        return null;
+      }
+    },
+
+    patchNoteText(id, text) {
+      set({
+        notes: get().notes.map((n) => (n.id === id ? { ...n, text } : n)),
+      });
+      noteTextWriter(id)(text);
+    },
+
+    commitNoteGeom(id, geom) {
+      set({
+        notes: get().notes.map((n) => (n.id === id ? { ...n, ...geom } : n)),
+      });
+      void repoUpdateNote(id, geom);
+    },
+
+    setNoteStyle(id, patch) {
+      set({
+        notes: get().notes.map((n) => (n.id === id ? { ...n, ...patch } : n)),
+      });
+      void repoUpdateNote(id, patch);
+    },
+
+    async removeNote(id) {
+      noteTextWriters.delete(id); // drop any pending text write for this note
+      set({ notes: get().notes.filter((n) => n.id !== id) });
+      await repoDeleteNote(id);
+    },
+
+    bringNoteToFront(id) {
+      const notes = get().notes;
+      const maxZ = notes.reduce((m, n) => Math.max(m, n.z), 0);
+      const note = notes.find((n) => n.id === id);
+      if (!note || note.z === maxZ) return; // already on top
+      const z = maxZ + 1;
+      set({
+        notes: notes.map((n) => (n.id === id ? { ...n, z } : n)),
+      });
+      void repoUpdateNote(id, { z });
+    },
+
+    flushNotes() {
+      flushNoteWriters();
     },
 
     setError(error) {

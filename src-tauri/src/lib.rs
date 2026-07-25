@@ -32,6 +32,18 @@ pub fn run() {
             sql: include_str!("../migrations/004_board_background.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 5,
+            description: "notes",
+            sql: include_str!("../migrations/005_notes.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 6,
+            description: "note_font_size",
+            sql: include_str!("../migrations/006_note_font_size.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     #[allow(unused_mut)]

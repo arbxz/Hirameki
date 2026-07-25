@@ -26,19 +26,22 @@ export function BoardTabs() {
   const deleteBoard = useBoardStore((s) => s.deleteBoard);
 
   const [editing, setEditing] = useState<Editing>(null);
-  const [menuFor, setMenuFor] = useState<string | null>(null);
+  // Context menu: which board, and where to anchor it (screen coords).
+  const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(
+    null,
+  );
   const [pendingDelete, setPendingDelete] = useState<Board | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   // Close the context menu on an outside click.
   useEffect(() => {
-    if (!menuFor) return;
+    if (!menu) return;
     const close = (e: PointerEvent) => {
-      if (!menuRef.current?.contains(e.target as Node)) setMenuFor(null);
+      if (!menuRef.current?.contains(e.target as Node)) setMenu(null);
     };
     window.addEventListener("pointerdown", close);
     return () => window.removeEventListener("pointerdown", close);
-  }, [menuFor]);
+  }, [menu]);
 
   return (
     <>
@@ -52,7 +55,15 @@ export function BoardTabs() {
               onClick={() => void switchBoard(b.id)}
               onContextMenu={(e) => {
                 e.preventDefault();
-                setMenuFor(b.id);
+                // Anchor the menu just under the tab that was clicked, clamped
+                // so a right-most tab's menu doesn't overflow the window.
+                const r = e.currentTarget.getBoundingClientRect();
+                const MENU_W = 144; // w-36
+                setMenu({
+                  id: b.id,
+                  x: Math.min(r.left, window.innerWidth - MENU_W - 8),
+                  y: r.bottom + 6,
+                });
               }}
               className={`flex h-8 items-center gap-1.5 rounded px-2.5 text-xs transition-colors ${
                 active
@@ -79,21 +90,22 @@ export function BoardTabs() {
         </button>
       </div>
 
-      {/* context menu (fixed-position, anchored under the toolbar) */}
-      {menuFor && (
+      {/* context menu, anchored under the clicked tab */}
+      {menu && (
         <div
           ref={menuRef}
-          className="ui-chrome fixed left-4 top-14 z-[3000] w-36 overflow-hidden rounded-lg bg-[var(--surface-solid)] py-1 text-xs text-[var(--text)] shadow-2xl ring-1 ring-[var(--border)]"
+          className="ui-chrome fixed z-[3000] w-36 overflow-hidden rounded-lg bg-[var(--surface-solid)] py-1 text-xs text-[var(--text)] shadow-2xl ring-1 ring-[var(--border)]"
+          style={{ left: menu.x, top: menu.y }}
         >
           {(() => {
-            const b = boards.find((x) => x.id === menuFor);
+            const b = boards.find((x) => x.id === menu.id);
             if (!b) return null;
             return (
               <>
                 <button
                   className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-[var(--surface-hover)]"
                   onClick={() => {
-                    setMenuFor(null);
+                    setMenu(null);
                     setEditing({ mode: "edit", board: b });
                   }}
                 >
@@ -102,7 +114,7 @@ export function BoardTabs() {
                 <button
                   className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-[var(--surface-hover)]"
                   onClick={() => {
-                    setMenuFor(null);
+                    setMenu(null);
                     setEditing({ mode: "background", board: b });
                   }}
                 >
@@ -112,7 +124,7 @@ export function BoardTabs() {
                   className="flex w-full items-center gap-2 px-3 py-1.5 text-red-400 hover:bg-red-500/20 disabled:opacity-40"
                   disabled={boards.length <= 1}
                   onClick={() => {
-                    setMenuFor(null);
+                    setMenu(null);
                     setPendingDelete(b);
                   }}
                 >

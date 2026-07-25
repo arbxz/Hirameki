@@ -10,9 +10,9 @@ import { getDb } from "./db";
 // asset files and the bundle file itself (unrestricted std::fs).
 
 // FK-safe insertion order (parents before children).
-const INSERT_ORDER = ["boards", "groups", "items", "tracks", "settings"];
+const INSERT_ORDER = ["boards", "groups", "items", "notes", "tracks", "settings"];
 // Wipe order (children before parents).
-const WIPE_ORDER = ["items", "groups", "tracks", "settings", "boards"];
+const WIPE_ORDER = ["items", "notes", "groups", "tracks", "settings", "boards"];
 
 // Allowed columns per table (matches the migrations). Used to validate an
 // imported manifest before applying it: this both rejects foreign/corrupt
@@ -30,6 +30,10 @@ const TABLE_COLUMNS: Record<string, ReadonlySet<string>> = {
   items: new Set([
     "id", "board_id", "group_id", "file_path", "src_url", "x", "y", "width",
     "height", "rotation", "z", "natural_w", "natural_h", "created_at",
+  ]),
+  notes: new Set([
+    "id", "board_id", "text", "x", "y", "width", "height", "z", "color",
+    "glass", "font_size", "created_at",
   ]),
   tracks: new Set(["id", "title", "file_path", "src_url", "created_at"]),
   settings: new Set(["key", "value"]),

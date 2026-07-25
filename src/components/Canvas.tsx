@@ -7,12 +7,14 @@ import {
   Minus,
   Plus,
   SendToBack,
+  StickyNote,
   Trash2,
   Ungroup,
 } from "lucide-react";
 import { useBoardStore } from "../store/boardStore";
 import { ingestDataTransfer, ingestFiles } from "../lib/ingest";
 import { ItemView } from "./ItemView";
+import { NoteView } from "./NoteView";
 import { SelectionLayer } from "./SelectionLayer";
 import { BoardBackground } from "./BoardBackground";
 import { BoardTabs } from "./BoardTabs";
@@ -34,10 +36,12 @@ export function Canvas() {
 
   const board = useBoardStore((s) => s.board);
   const items = useBoardStore((s) => s.items);
+  const notes = useBoardStore((s) => s.notes);
   const loading = useBoardStore((s) => s.loading);
   const init = useBoardStore((s) => s.init);
   const setView = useBoardStore((s) => s.setView);
   const addItem = useBoardStore((s) => s.addItem);
+  const addNote = useBoardStore((s) => s.addNote);
   const setError = useBoardStore((s) => s.setError);
   const removeItems = useBoardStore((s) => s.removeItems);
   const bringToFront = useBoardStore((s) => s.bringToFront);
@@ -52,6 +56,13 @@ export function Canvas() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   // Holds the ids awaiting delete confirmation (null = no prompt open).
   const [pendingDelete, setPendingDelete] = useState<string[] | null>(null);
+  // Right-click "Add note here" menu: screen position + the world point to place
+  // the note at (null = closed).
+  const [noteMenu, setNoteMenu] = useState<{
+    screenX: number;
+    screenY: number;
+    world: { x: number; y: number };
+  } | null>(null);
   // Refs are null on first render; flip after mount so SelectionLayer re-renders
   // once the container/world elements actually exist.
   const [mounted, setMounted] = useState(false);
@@ -74,6 +85,12 @@ export function Canvas() {
   const ordered = useMemo(
     () => [...items].sort((a, b) => a.z - b.z),
     [items],
+  );
+
+  // Notes render above all items, ordered among themselves by z.
+  const orderedNotes = useMemo(
+    () => [...notes].sort((a, b) => a.z - b.z),
+    [notes],
   );
 
   // Group/ungroup availability for the toolbar. Can group when ≥2 are selected
@@ -181,15 +198,29 @@ export function Canvas() {
     return () => window.removeEventListener("keydown", onKey);
   }, [removeItems, bringToFront, sendToBack, groupItems, ungroupItems]);
 
+  // Close the right-click note menu on Escape.
+  useEffect(() => {
+    if (!noteMenu) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setNoteMenu(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [noteMenu]);
+
   // Load the board on mount.
   useEffect(() => {
     void init();
   }, [init]);
 
-  // Flush the pending viewport write when the window is closing so the next
-  // launch restores the exact last position.
+  // Flush pending viewport + note-text writes when the window is closing so the
+  // next launch restores the exact last position and note contents.
   useEffect(() => {
-    const flush = useBoardStore.getState().flushView;
+    const flush = () => {
+      const s = useBoardStore.getState();
+      s.flushView();
+      s.flushNotes();
+    };
     window.addEventListener("beforeunload", flush);
     return () => window.removeEventListener("beforeunload", flush);
   }, []);
@@ -303,6 +334,23 @@ export function Canvas() {
         if (e.relatedTarget === null) setDragOver(false);
       }}
       onDrop={onDrop}
+      onContextMenu={(e) => {
+        // Only offer "Add note here" on empty canvas — not over UI chrome
+        // (toolbar, settings, music, tabs), editable fields, or existing notes.
+        const t = e.target as HTMLElement;
+        if (
+          t.closest?.(
+            'input, textarea, [contenteditable="true"], .sticky-note, .ui-chrome',
+          )
+        )
+          return;
+        e.preventDefault();
+        setNoteMenu({
+          screenX: e.clientX,
+          screenY: e.clientY,
+          world: screenToWorld(e.clientX, e.clientY),
+        });
+      }}
       className={`relative h-full w-full select-none overflow-hidden bg-[var(--bg)] ${
         spaceHeld ? "cursor-grab active:cursor-grabbing" : ""
       }`}
@@ -358,6 +406,9 @@ export function Canvas() {
               item={item}
               selected={selectedIds.includes(item.id)}
             />
+          ))}
+          {orderedNotes.map((note) => (
+            <NoteView key={note.id} note={note} zoom={zoom} />
           ))}
         </div>
       </InfiniteViewer>
@@ -474,6 +525,36 @@ export function Canvas() {
           <Plus size={16} />
         </button>
       </div>
+
+      {/* right-click "Add note here" menu */}
+      {noteMenu && (
+        <>
+          {/* full-screen catcher: any click/right-click elsewhere dismisses */}
+          <div
+            className="fixed inset-0 z-40"
+            onPointerDown={() => setNoteMenu(null)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setNoteMenu(null);
+            }}
+          />
+          <div
+            className="ui-chrome fixed z-50 overflow-hidden rounded-lg bg-[var(--surface-solid)] py-1 text-xs text-[var(--text)] shadow-2xl ring-1 ring-[var(--border)]"
+            style={{ left: noteMenu.screenX, top: noteMenu.screenY }}
+          >
+            <button
+              className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-[var(--surface-hover)]"
+              onClick={() => {
+                void addNote(noteMenu.world);
+                setNoteMenu(null);
+              }}
+            >
+              <StickyNote size={13} />
+              Add note here
+            </button>
+          </div>
+        </>
+      )}
 
       {/* delete confirmation */}
       {pendingDelete && (

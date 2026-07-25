@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Board, Item } from "../types/board";
+import type { Note } from "../lib/notes";
 
 // The store persists every mutation through the repo (SQLite) + settings layers.
 // Mock both so the reducers run in isolation with no DB. Fire-and-forget writes
@@ -32,6 +33,23 @@ vi.mock("../lib/repo", () => ({
 vi.mock("../lib/settings", () => ({
   getSetting: vi.fn(async () => null),
   setSetting: vi.fn(async () => {}),
+}));
+vi.mock("../lib/notes", () => ({
+  listNotes: vi.fn(async () => []),
+  createNote: vi.fn(
+    async (boardId: string, partial: Record<string, unknown>) => ({
+      id: "note-1",
+      boardId,
+      text: "",
+      color: null,
+      glass: false,
+      fontSize: 14,
+      createdAt: 0,
+      ...partial,
+    }),
+  ),
+  updateNote: vi.fn(async () => {}),
+  deleteNote: vi.fn(async () => {}),
 }));
 
 const { useBoardStore } = await import("./boardStore");
@@ -73,12 +91,30 @@ function item(id: string, z: number, groupId: string | null = null): Item {
 const zById = () =>
   Object.fromEntries(useBoardStore.getState().items.map((i) => [i.id, i.z]));
 
+function note(id: string, z: number): Note {
+  return {
+    id,
+    boardId: "b1",
+    text: "",
+    x: 0,
+    y: 0,
+    width: 220,
+    height: 200,
+    z,
+    color: null,
+    glass: false,
+    fontSize: 14,
+    createdAt: 0,
+  };
+}
+
 beforeEach(() => {
   useBoardStore.setState({
     board,
     boards: [board],
     groups: [],
     items: [item("a", 1), item("b", 2), item("c", 3)],
+    notes: [],
     error: null,
   });
 });
@@ -135,6 +171,46 @@ describe("grouping", () => {
   it("refuses to group fewer than two items", async () => {
     expect(await useBoardStore.getState().groupItems(["a"])).toBeNull();
     expect(useBoardStore.getState().groups).toHaveLength(0);
+  });
+});
+
+describe("notes", () => {
+  it("addNote places a note near the viewport top-left and on top", async () => {
+    const created = await useBoardStore.getState().addNote();
+    // board view is at origin, zoom 1 → 80px offset in world units.
+    expect(created?.x).toBe(80);
+    expect(created?.y).toBe(80);
+    expect(created?.z).toBe(1); // maxZ (0) + 1
+    expect(useBoardStore.getState().notes).toHaveLength(1);
+  });
+
+  it("addNote uses exact world coords when given (right-click menu)", async () => {
+    const created = await useBoardStore.getState().addNote({ x: 500, y: 250 });
+    expect(created?.x).toBe(500);
+    expect(created?.y).toBe(250);
+  });
+
+  it("bringNoteToFront raises a note above the others", () => {
+    useBoardStore.setState({ notes: [note("n1", 1), note("n2", 2), note("n3", 3)] });
+    useBoardStore.getState().bringNoteToFront("n1");
+    const z = Object.fromEntries(
+      useBoardStore.getState().notes.map((n) => [n.id, n.z]),
+    );
+    expect(z.n1).toBeGreaterThan(z.n2);
+    expect(z.n1).toBeGreaterThan(z.n3);
+  });
+
+  it("removeNote drops the note from state", async () => {
+    useBoardStore.setState({ notes: [note("n1", 1), note("n2", 2)] });
+    await useBoardStore.getState().removeNote("n1");
+    const ids = useBoardStore.getState().notes.map((n) => n.id);
+    expect(ids).toEqual(["n2"]);
+  });
+
+  it("setNoteStyle updates the font size in state", () => {
+    useBoardStore.setState({ notes: [note("n1", 1)] });
+    useBoardStore.getState().setNoteStyle("n1", { fontSize: 24 });
+    expect(useBoardStore.getState().notes[0].fontSize).toBe(24);
   });
 });
 

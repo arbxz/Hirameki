@@ -4,6 +4,7 @@ import {
   Palette,
   RefreshCw,
   Settings,
+  StickyNote,
   Upload,
   X,
 } from "lucide-react";
@@ -76,8 +77,17 @@ export function SettingsPanel() {
     }
   };
 
+  const addNote = useBoardStore((s) => s.addNote);
+
   return (
     <div className="ui-chrome absolute right-4 top-4 flex flex-col items-end gap-2">
+      <button
+        className="grid h-10 w-10 place-items-center rounded-lg bg-[var(--surface)] text-[var(--text)] shadow-lg ring-1 ring-[var(--border)] backdrop-blur hover:bg-[var(--surface-hover)]"
+        onClick={() => void addNote()}
+        title="Add note"
+      >
+        <StickyNote size={16} />
+      </button>
       <button
         className="grid h-10 w-10 place-items-center rounded-lg bg-[var(--surface)] text-[var(--text)] shadow-lg ring-1 ring-[var(--border)] backdrop-blur hover:bg-[var(--surface-hover)]"
         onClick={() => setOpen((o) => !o)}
