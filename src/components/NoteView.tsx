@@ -16,6 +16,12 @@ import {
 // screen deltas convert to world units by dividing by the current zoom. Geometry
 // is kept locally during a gesture and committed to the store once on pointer-up.
 //
+// Gestures rely on pointer capture on the root, which the browser releases if the
+// element is moved in the DOM — so Canvas must keep notes in stable array order
+// (they stack via zIndex, not DOM order). endGesture is also wired to
+// lostpointercapture, and a move with no button held ends the gesture, so a lost
+// capture can't strand a drag/resize that then follows the cursor unheld.
+//
 // Zoom legibility: the body text scales literally with the canvas (size is set
 // manually via the A-/A+ stepper — no auto floor). Only the header chrome + resize
 // handle get a mild counter-scale (sqrt-dampened, clamped) so they shrink less
@@ -34,6 +40,7 @@ interface Gesture {
   y: number;
   w: number;
   h: number;
+  zoom: number; // canvas zoom at gesture start
 }
 
 export function NoteView({ note, zoom }: { note: Note; zoom: number }) {
@@ -69,8 +76,11 @@ export function NoteView({ note, zoom }: { note: Note; zoom: number }) {
   const handlePx = 16 * cs;
 
   const geomFrom = (g: Gesture, clientX: number, clientY: number) => {
-    const dx = (clientX - g.cx) / zoom;
-    const dy = (clientY - g.cy) / zoom;
+    // Convert with the zoom captured at pointer-down, not the live one: the
+    // delta is measured from the gesture's anchor, so zooming mid-gesture would
+    // re-scale the whole accumulated delta at once and make the note jump.
+    const dx = (clientX - g.cx) / g.zoom;
+    const dy = (clientY - g.cy) / g.zoom;
     return g.kind === "drag"
       ? { x: g.x + dx, y: g.y + dy, width: g.w, height: g.h }
       : {
@@ -94,23 +104,33 @@ export function NoteView({ note, zoom }: { note: Note; zoom: number }) {
         y: note.y,
         w: note.width,
         h: note.height,
+        zoom,
       };
       rootRef.current?.setPointerCapture(e.pointerId);
     };
-
-  const onPointerMove = (e: React.PointerEvent) => {
-    const g = gestureRef.current;
-    if (!g) return;
-    setLive(geomFrom(g, e.clientX, e.clientY));
-  };
 
   const endGesture = (e: React.PointerEvent) => {
     const g = gestureRef.current;
     if (!g) return;
     gestureRef.current = null;
-    rootRef.current?.releasePointerCapture(e.pointerId);
+    if (rootRef.current?.hasPointerCapture(e.pointerId)) {
+      rootRef.current.releasePointerCapture(e.pointerId);
+    }
     commitNoteGeom(note.id, geomFrom(g, e.clientX, e.clientY));
     setLive(null);
+  };
+
+  const onPointerMove = (e: React.PointerEvent) => {
+    const g = gestureRef.current;
+    if (!g) return;
+    // Self-heal: without pointer capture the pointerup can land on another
+    // element, leaving the gesture open. A move with no button held means the
+    // release already happened, so end it here rather than track the hover.
+    if (e.buttons === 0) {
+      endGesture(e);
+      return;
+    }
+    setLive(geomFrom(g, e.clientX, e.clientY));
   };
 
   const pickColor = (color: NoteColorKey | null) => {
@@ -140,6 +160,7 @@ export function NoteView({ note, zoom }: { note: Note; zoom: number }) {
       onPointerMove={onPointerMove}
       onPointerUp={endGesture}
       onPointerCancel={endGesture}
+      onLostPointerCapture={endGesture}
     >
       {/* header / drag handle */}
       <div

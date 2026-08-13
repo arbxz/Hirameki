@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import InfiniteViewer from "react-infinite-viewer";
 import {
   BringToFront,
@@ -27,6 +27,10 @@ import { ConfirmModal } from "./Modal";
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 8;
 const GRID = 40;
+// Ctrl+wheel zoom, as exponents so zooming in and back out is symmetric.
+// One mouse notch is a fixed step; a touchpad pinch scales with its own delta.
+const WHEEL_ZOOM_STEP = 0.12;
+const PINCH_ZOOM_RATE = 0.01;
 
 export function Canvas() {
   const viewerRef = useRef<InfiniteViewer>(null);
@@ -87,11 +91,11 @@ export function Canvas() {
     [items],
   );
 
-  // Notes render above all items, ordered among themselves by z.
-  const orderedNotes = useMemo(
-    () => [...notes].sort((a, b) => a.z - b.z),
-    [notes],
-  );
+  // Notes render above all items (their zIndex beats the items' auto z), and
+  // among themselves by the same zIndex — so they are deliberately rendered in
+  // stable array order and NOT sorted by z like items are. Sorting here would
+  // reorder the DOM on bringNoteToFront, and moving a node mid-gesture
+  // implicitly releases its pointer capture, stranding a drag/resize.
 
   // Group/ungroup availability for the toolbar. Can group when ≥2 are selected
   // and they aren't already all one existing group; can ungroup when any
@@ -121,6 +125,10 @@ export function Canvas() {
   const pendingDeleteRef = useRef<string[] | null>(null);
   pendingDeleteRef.current = pendingDelete;
 
+  // True while we're programmatically restoring a saved viewport; see the
+  // restore effect below for why the echoed events must not be persisted.
+  const restoringRef = useRef(false);
+
   const screenToWorld = (clientX: number, clientY: number) => {
     const rect = containerRef.current?.getBoundingClientRect();
     const left = rect?.left ?? 0;
@@ -131,6 +139,34 @@ export function Canvas() {
 
   const viewportCenterWorld = () =>
     screenToWorld(window.innerWidth / 2, window.innerHeight / 2);
+
+  // Zoom by `factor` about a screen point, keeping the world coordinate under
+  // that point fixed — solving screenToWorld for the new scroll gives
+  // scroll' = scroll + offset * (1/z - 1/z'). Reads the viewport from viewRef so
+  // it stays valid inside handlers registered once.
+  const zoomAt = useCallback(
+    (clientX: number, clientY: number, factor: number) => {
+      const viewer = viewerRef.current;
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!viewer || !rect) return;
+      const { zoom: z, scroll: s } = viewRef.current;
+      const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z * factor));
+      if (next === z) return; // already pinned at a zoom limit
+      const k = 1 / z - 1 / next;
+      const at = {
+        x: s.x + (clientX - rect.left) * k,
+        y: s.y + (clientY - rect.top) * k,
+      };
+      // setZoom re-anchors scroll on its own (useAutoZoom); scrollTo right
+      // after overrides it with the cursor-anchored position.
+      viewer.setZoom(next);
+      viewer.scrollTo(at.x, at.y);
+      setZoom(next);
+      setScroll(at);
+      if (!restoringRef.current) setView({ ...at, zoom: next });
+    },
+    [setView],
+  );
 
   // Hold Space to pan with a left-drag (Figma-style).
   useEffect(() => {
@@ -225,14 +261,35 @@ export function Canvas() {
     return () => window.removeEventListener("beforeunload", flush);
   }, []);
 
-  // WebView2 hijacks Ctrl+wheel for native page zoom; cancel it.
+  // Ctrl+wheel is overloaded: it's WebView2's native page-zoom gesture, it's how
+  // Chromium reports a *touchpad pinch*, and it's the plain mouse zoom shortcut.
+  // We take it over entirely — cancel the native zoom, keep it away from
+  // InfiniteViewer's own wheel-pinch (hence the capture-phase stopPropagation;
+  // its handler sits on the viewer container, and its single wheelScale can't
+  // serve both a 100+ mouse notch and a touchpad's stream of small deltas), and
+  // apply our own cursor-anchored zoom instead. macOS trackpads don't come
+  // through here — WKWebView reports those as gesture events, which the viewer's
+  // `useGesture` still handles.
   useEffect(() => {
     const onWheel = (e: WheelEvent) => {
-      if (e.ctrlKey) e.preventDefault();
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const el = containerRef.current;
+      if (!el || !el.contains(e.target as Node)) return;
+      // A mouse notch arrives as one big delta (usually a multiple of 100/120,
+      // or a line/page unit); a pinch streams many small, often fractional
+      // ones. Scaling both the same way makes one of the two unusable.
+      const notch = e.deltaMode !== 0 || Math.abs(e.deltaY) >= 50;
+      const factor = notch
+        ? Math.exp(-Math.sign(e.deltaY) * WHEEL_ZOOM_STEP)
+        : Math.exp(-e.deltaY * PINCH_ZOOM_RATE);
+      zoomAt(e.clientX, e.clientY, factor);
     };
-    window.addEventListener("wheel", onWheel, { passive: false });
-    return () => window.removeEventListener("wheel", onWheel);
-  }, []);
+    window.addEventListener("wheel", onWheel, { passive: false, capture: true });
+    return () =>
+      window.removeEventListener("wheel", onWheel, { capture: true });
+  }, [zoomAt]);
 
   // Paste images or image URLs from the clipboard.
   useEffect(() => {
@@ -256,12 +313,11 @@ export function Canvas() {
   // finish measuring its container before scrollTo/setZoom take effect,
   // otherwise the restore silently no-ops and the canvas opens at origin.
   const restoredBoardId = useRef<string | null>(null);
-  // True while we're programmatically restoring. InfiniteViewer re-emits `scroll`
-  // events in response to setZoom/scrollTo (and again a frame later via its own
-  // scroll-correction). Those echoes must NOT persist, or they overwrite the
-  // saved viewport with the restore's intermediate (wrong-zoom) values — which
-  // corrupts the stored position on the *next* launch.
-  const restoringRef = useRef(false);
+  // restoringRef (declared above) is set for the duration of the restore.
+  // InfiniteViewer re-emits `scroll` events in response to setZoom/scrollTo (and
+  // again a frame later via its own scroll-correction). Those echoes must NOT
+  // persist, or they overwrite the saved viewport with the restore's
+  // intermediate (wrong-zoom) values — corrupting it for the *next* launch.
   useEffect(() => {
     if (!board || restoredBoardId.current === board.id) return;
     restoredBoardId.current = board.id;
@@ -374,12 +430,13 @@ export function Canvas() {
         className="absolute inset-0 h-full w-full"
         useMouseDrag={spaceHeld}
         useWheelScroll
-        useWheelPinch
+        // Ctrl+wheel zoom is handled by our own wheel listener (see above), so
+        // the viewer's wheel-pinch stays off — with it on, both would fire.
+        useWheelPinch={false}
         useAutoZoom
+        // Safari/WKWebView trackpad pinch arrives as gesture events, not
+        // ctrl+wheel; the viewer handles those.
         useGesture
-        wheelPinchKey="ctrl"
-        wheelScale={0.035}
-        maxPinchWheel={3}
         zoomRange={[MIN_ZOOM, MAX_ZOOM]}
         onScroll={(e) => {
           setScroll({ x: e.scrollLeft, y: e.scrollTop });
@@ -407,7 +464,7 @@ export function Canvas() {
               selected={selectedIds.includes(item.id)}
             />
           ))}
-          {orderedNotes.map((note) => (
+          {notes.map((note) => (
             <NoteView key={note.id} note={note} zoom={zoom} />
           ))}
         </div>

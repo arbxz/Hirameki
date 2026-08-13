@@ -49,7 +49,7 @@ Tauri commands are registered in [src-tauri/src/lib.rs](src-tauri/src/lib.rs): `
 
 Schema lives in [src-tauri/migrations/](src-tauri/migrations/) (versioned `.sql` files, applied in order). Core canvas tables — `boards`, `groups`, `items`, `notes` — plus `settings` (key/value) and `tracks` (music). Everything is scoped to a board and cascade-deletes via FK.
 
-- **DB columns are `snake_case`; app types are `camelCase`.** [src/lib/repo.ts](src/lib/repo.ts) owns the SQL + row⇄domain mapping for `boards`/`groups`/`items`; the parallel [src/lib/notes.ts](src/lib/notes.ts) (notes) and [src/lib/tracks.ts](src/lib/tracks.ts) (music) do the same for their own tables. Everything above these works purely in the domain types. Add a column → update the migration, the `*Row` interface, the mapper, and the type.
+- **DB columns are `snake_case`; app types are `camelCase`.** The camelCase domain types `Board`/`Group`/`Item` live in [src/types/board.ts](src/types/board.ts); [src/lib/repo.ts](src/lib/repo.ts) owns the SQL + row⇄domain mapping for those tables, and the parallel [src/lib/notes.ts](src/lib/notes.ts) (notes) and [src/lib/tracks.ts](src/lib/tracks.ts) (music) do the same for their own tables, declaring their types inline. Everything above these works purely in the domain types. Add a column → update the migration, the `*Row` interface, the mapper, and the type.
 - **Binary assets are never stored in the DB.** Files are written to `<app_data>/images/<uuid>.<ext>` and `<app_data>/audio/...`; the DB stores only the *relative* path. The front end resolves that back to a loadable URL with `convertFileSrc` via [src/lib/assets.ts](src/lib/assets.ts) `resolveAssetSrc`. The asset protocol is scoped to `$APPDATA/**` in [tauri.conf.json](src-tauri/tauri.conf.json).
 
 ### State: Zustand stores
@@ -62,6 +62,39 @@ Three stores, each self-initializing (guard against React StrictMode's double-mo
 
 Play/mute/volume/theme/active-board and other prefs persist to the `settings` table via [src/lib/settings.ts](src/lib/settings.ts).
 
+### Boards, tabs & backgrounds
+
+A board is the unit of everything — items, groups, and notes all FK to it and
+cascade-delete with it. Multi-board support lives across migration
+[003_board_tabs.sql](src-tauri/migrations/003_board_tabs.sql) (adds `color` for the
+tab tag and `position` for explicit tab order) and
+[BoardTabs.tsx](src/components/BoardTabs.tsx), a row of buttons rendered inside the
+canvas toolbar: click to switch, right-click for rename / background / delete, `+` to
+create. Every dialog it opens — create/rename ([BoardModal.tsx](src/components/BoardModal.tsx)),
+background, delete-confirm — goes through the shared full-screen
+[Modal.tsx](src/components/Modal.tsx) so nothing is clipped by the toolbar.
+Board CRUD + `reorderBoards` are boardStore actions backed by `repo.ts`.
+
+- The active board id persists to `settings` under `board.activeId`, so the app
+  reopens on the board you left.
+- `switchBoard` restores the target board's viewport **from the in-memory `boards`
+  array**, which is why `setView` writes live pan/zoom into *both* `board` and the
+  matching entry in `boards` — otherwise switching back snaps to a stale position.
+
+**Per-board background** (migration
+[004_board_background.sql](src-tauri/migrations/004_board_background.sql):
+`bg_path` / `bg_url` / `bg_fit`). At most one of `bgPath` (an imported file under the
+app images dir) or `bgUrl` (a remote link) is set; `bgFit` is `"cover"` or
+`"contain"`. Link backgrounds are referenced **directly, not downloaded**, so
+animated gifs stream from the source and export bundles stay small.
+[BoardBackground.tsx](src/components/BoardBackground.tsx) renders it as an `<img>`
+with `object-fit` — not a CSS background — so gifs reliably animate and contain-mode
+letterboxing is exact. It sits behind the dot grid and **deliberately does not pan or
+zoom with the viewport**; keep it outside the transformed world div.
+[BackgroundModal.tsx](src/components/BackgroundModal.tsx) is the editor (upload /
+paste link / fit / remove), writing through the store's `setBoardBackground` →
+`repo.ts` `updateBoardBackground`.
+
 ### The canvas
 
 [src/components/Canvas.tsx](src/components/Canvas.tsx) is the heart of the UI and the most subtle file. It composes `react-infinite-viewer` (pan/zoom) with a `SelectionLayer` ([src/components/SelectionLayer.tsx](src/components/SelectionLayer.tsx)) built on `react-moveable` + `react-selecto` for drag/resize/rotate/marquee. Key things to preserve when editing:
@@ -69,7 +102,8 @@ Play/mute/volume/theme/active-board and other prefs persist to the `settings` ta
 - **Viewport restore is timing-sensitive.** Restoring a saved pan/zoom is deferred to a `requestAnimationFrame` (the viewer must finish measuring first), and a `restoringRef` guard suppresses the echo `scroll`/`pinch` events the viewer re-emits during a programmatic restore — otherwise those intermediate values overwrite the saved viewport and corrupt it for the next launch.
 - The dot grid is a CSS `radial-gradient` background whose size/position is driven manually from `zoom`/`scroll` — it is *not* inside the transformed viewport.
 - `SelectionLayer` renders in **screen space** (outside the scaled viewport) so moveable's control box aligns; it's fed the live `viewport` transform to convert coordinates.
-- WebView2 hijacks Ctrl+wheel for native zoom, so a passive-false wheel handler `preventDefault()`s it.
+- **Ctrl+wheel is handled entirely by Canvas**, not the viewer (`useWheelPinch={false}`). A capture-phase, passive-false window listener `preventDefault()`s it (WebView2 would otherwise page-zoom) and `stopPropagation()`s it away from InfiniteViewer's wheel-pinch, then calls `zoomAt`, which zooms about the cursor by solving `screenToWorld` for the new scroll. One handler serves two very different inputs, so the delta magnitude picks between them: a mouse notch is a single ±100 and gets a fixed step; a **touchpad pinch** streams small/fractional deltas and gets a delta-proportional rate.
+- **Trackpad pinch needs the Rust side too.** WebView2 applies a pinch as "Page Scale" zoom — a post-rendering step that scales the rendered surface and never dispatches an event — so the gesture reaches JS *only* because `disable_webview_pinch_zoom` in [lib.rs](src-tauri/src/lib.rs) turns off `IsPinchZoomEnabled` via `ICoreWebView2Settings5`. That setting isn't exposed in Tauri config, hence the raw `with_webview` cast and the `webview2-com`/`windows` deps (pinned to the versions Tauri resolves, or the COM types won't match). macOS is a separate path again — WKWebView sends gesture events, which is why the viewer's `useGesture` stays on.
 
 ### Sticky notes
 
@@ -79,8 +113,16 @@ instead have their own `notes` table, a boardStore slice (`addNote`/`patchNoteTe
 `commitNoteGeom`/`setNoteStyle`/`removeNote`/`bringNoteToFront`), and self-contained
 pointer-based drag (by the header) + resize (by the corner) in
 [src/components/NoteView.tsx](src/components/NoteView.tsx) — screen deltas convert to
-world units via `/ zoom`. Notes render in the world div *after* items (always above
-images; z-order applies among notes only). The only cross-cutting touch is Canvas's
+world units via `/ zoom`, using the zoom **captured at pointer-down** (the delta is
+measured from the gesture's anchor, so a live zoom would re-scale the whole
+accumulated delta at once and make the note jump). Notes render in the world div *after* items (always above
+images; z-order applies among notes only) — but unlike items, which are **sorted by
+`z` into DOM order** because `ItemView` sets no `zIndex`, notes stack via an explicit
+`zIndex` and must stay in **stable array order**. Sorting them would reorder the DOM
+on `bringNoteToFront`, and moving a node mid-gesture implicitly releases its pointer
+capture, stranding the drag/resize so it keeps tracking the cursor after the button
+is released. `NoteView` also ends a gesture on `lostpointercapture` and on any move
+with no button held, as a backstop. The only cross-cutting touch is Canvas's
 `Selecto` `dragCondition`, which excludes `.sticky-note` so note interactions don't
 start a marquee. Styling/persistence live in [src/lib/notes.ts](src/lib/notes.ts):
 `color` is a fixed-palette key or `null` (= follow `--accent` via `color-mix`, so
@@ -98,7 +140,7 @@ the `zoom` prop Canvas passes down.
 
 ### Ingestion pipeline
 
-Drop / paste / upload / image-link all funnel through [src/lib/ingest.ts](src/lib/ingest.ts). A `DataTransfer` prefers real image files; otherwise it falls back to a dragged/pasted URL (`text/uri-list` or plain text). Each image is measured for aspect ratio *before* persisting (via an object URL) so there's no post-load resize flicker, scaled to `DEFAULT_MAX_DIM` (360) on its longest edge, and multi-drops cascade by 28px. `tauri.conf.json` sets `dragDropEnabled: false` on the window so the WebView (not the OS) handles HTML5 drop events.
+Drop / paste / upload / image-link all funnel through [src/lib/ingest.ts](src/lib/ingest.ts). A `DataTransfer` prefers real image files; otherwise it falls back to a dragged/pasted URL (`text/uri-list` or plain text). Each image is measured for aspect ratio *before* persisting (via an object URL) so there's no post-load resize flicker, scaled to `DEFAULT_MAX_DIM` (360, defined with `fitDimensions` in [src/lib/images.ts](src/lib/images.ts)) on its longest edge, and multi-drops cascade by 28px. `tauri.conf.json` sets `dragDropEnabled: false` on the window so the WebView (not the OS) handles HTML5 drop events.
 
 ### Window shell
 
