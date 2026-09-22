@@ -182,6 +182,7 @@ export function NoteView({ note, zoom }: { note: Note; zoom: number }) {
           <button
             className={iconBtn}
             style={btnBox}
+            aria-label="Smaller text"
             title="Smaller text"
             onClick={() => changeFont(-1)}
           >
@@ -192,6 +193,7 @@ export function NoteView({ note, zoom }: { note: Note; zoom: number }) {
           <button
             className={iconBtn}
             style={btnBox}
+            aria-label="Larger text"
             title="Larger text"
             onClick={() => changeFont(1)}
           >
@@ -210,6 +212,8 @@ export function NoteView({ note, zoom }: { note: Note; zoom: number }) {
           <button
             className={iconBtn}
             style={btnBox}
+            aria-label="Note colour"
+            aria-expanded={paletteOpen}
             title="Color"
             onClick={() => setPaletteOpen((o) => !o)}
           >
@@ -218,6 +222,8 @@ export function NoteView({ note, zoom }: { note: Note; zoom: number }) {
           <button
             className={iconBtn}
             style={{ ...btnBox, opacity: note.glass ? 1 : undefined }}
+            aria-label={note.glass ? "Solid background" : "Glass background"}
+            aria-pressed={note.glass}
             title={note.glass ? "Solid background" : "Glass background"}
             onClick={() => setNoteStyle(note.id, { glass: !note.glass })}
           >
@@ -226,6 +232,7 @@ export function NoteView({ note, zoom }: { note: Note; zoom: number }) {
           <button
             className={iconBtn}
             style={btnBox}
+            aria-label="Delete note"
             title="Delete note"
             onClick={() => void removeNote(note.id)}
           >
@@ -252,6 +259,7 @@ export function NoteView({ note, zoom }: { note: Note; zoom: number }) {
               note.color === null ? "outline outline-2 outline-[var(--accent)]" : ""
             }`}
             style={{ width: 18 * cs, height: 18 * cs, background: "var(--accent)" }}
+            aria-label="Theme accent"
             title="Theme accent"
             onClick={() => pickColor(null)}
           />
@@ -266,6 +274,7 @@ export function NoteView({ note, zoom }: { note: Note; zoom: number }) {
                 height: 18 * cs,
                 background: NOTE_PALETTE[key].bg,
               }}
+              aria-label={key}
               title={key}
               onClick={() => pickColor(key)}
             />

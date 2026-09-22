@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { Link, Trash2, Upload } from "lucide-react";
 import { useBoardStore } from "../store/boardStore";
 import { saveFile } from "../lib/images";
@@ -23,6 +23,8 @@ export function BackgroundModal({
   const [urlInput, setUrlInput] = useState(board.bgUrl ?? "");
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const fitLabelId = useId();
+  const sourceLabelId = useId();
 
   const hasBackground = !!(board.bgPath || board.bgUrl);
 
@@ -85,14 +87,18 @@ export function BackgroundModal({
   return (
     <Modal title="Board background" onClose={onClose}>
       {/* fit */}
-      <label className="mb-1.5 block text-[11px] text-[var(--text-dim)]">
+      <div
+        id={fitLabelId}
+        className="mb-1.5 block text-[11px] text-[var(--text-dim)]"
+      >
         Fit
-      </label>
-      <div className="mb-4 flex gap-1.5">
+      </div>
+      <div role="group" aria-labelledby={fitLabelId} className="mb-4 flex gap-1.5">
         {(["cover", "contain"] as const).map((f) => (
           <button
             key={f}
             onClick={() => applyFit(f)}
+            aria-pressed={fit === f}
             className={`flex-1 rounded-lg px-2 py-1.5 text-xs capitalize ring-1 ${
               fit === f
                 ? "bg-[var(--accent)]/20 ring-[var(--accent)]"
@@ -105,9 +111,12 @@ export function BackgroundModal({
       </div>
 
       {/* source */}
-      <label className="mb-1.5 block text-[11px] text-[var(--text-dim)]">
+      <div
+        id={sourceLabelId}
+        className="mb-1.5 block text-[11px] text-[var(--text-dim)]"
+      >
         Image / GIF
-      </label>
+      </div>
       <button
         className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--surface-hover)] px-2 py-1.5 text-xs hover:opacity-80 disabled:opacity-40"
         onClick={() => fileRef.current?.click()}
@@ -121,12 +130,15 @@ export function BackgroundModal({
           onChange={(e) => setUrlInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && void onApplyUrl()}
           placeholder="Paste image/GIF link"
+          aria-label="Image or GIF link"
+          aria-describedby={sourceLabelId}
           className="min-w-0 flex-1 rounded-lg bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--text)] outline-none ring-1 ring-[var(--border)] focus:ring-[var(--accent)]"
         />
         <button
           className="grid place-items-center rounded-lg bg-[var(--surface-hover)] px-2.5 hover:opacity-80 disabled:opacity-40"
           onClick={() => void onApplyUrl()}
           disabled={busy || !looksLikeUrl(urlInput)}
+          aria-label="Use this link as the background"
           title="Use link"
         >
           <Link size={14} />

@@ -43,6 +43,15 @@ textarea,
   -webkit-user-select: text;
 }
 
+/* Keyboard focus needs to be visible: the app is almost entirely icon-only
+   buttons on a dark canvas, where the browser default ring all but disappears.
+   :focus-visible (not :focus) so mouse clicks don't leave rings behind. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 /* Don't let images be dragged out as ghost images. */
 img {
   -webkit-user-drag: none;

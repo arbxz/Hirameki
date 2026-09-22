@@ -6,6 +6,10 @@ import { getDb } from "./db";
 // row (boards/groups/items/tracks/settings) plus the actual image & audio bytes
 // (base64, embedded by the Rust side) so it's portable across machines.
 //
+// Tracks and audio are legacy (the music widget is gone) but still round-trip,
+// because import wipes every table first: dropping them here would delete
+// them from the target machine.
+//
 // JS owns DB read/write (via the sql plugin); Rust owns reading/writing the
 // asset files and the bundle file itself (unrestricted std::fs).
 
@@ -129,7 +133,7 @@ async function applyManifest(m: Manifest): Promise<void> {
 }
 
 /**
- * Import a bundle, REPLACING the current board. Rust restores the asset files
+ * Import a bundle, REPLACING every board on this device (all tables are wiped). Rust restores the asset files
  * and returns the manifest; we apply it to the DB then reload so all stores
  * re-init from the imported data. Returns false if cancelled.
  */

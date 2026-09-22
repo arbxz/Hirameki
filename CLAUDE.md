@@ -37,30 +37,32 @@ Production builds are signed for the auto-updater and need the Tauri signing key
 
 Work is divided by capability, not just by layer. **Rust owns anything the WebView can't safely do:**
 
-- Writing user bytes to disk under the app-data dir ([src-tauri/src/storage.rs](src-tauri/src/storage.rs) `save_bytes` — the shared helper behind images and audio).
+- Writing user bytes to disk under the app-data dir ([src-tauri/src/storage.rs](src-tauri/src/storage.rs) `save_bytes` — the shared helper behind image saving).
 - Downloading remote image URLs, bypassing browser CORS, with timeout / redirect / 64 MiB size caps ([src-tauri/src/images.rs](src-tauri/src/images.rs) `download_image`).
 - Reading/writing arbitrary user-chosen paths for export/import, outside the WebView fs ACL scope ([src-tauri/src/bundle.rs](src-tauri/src/bundle.rs)).
 
 **JS owns the database.** The SQLite connection lives on the front end via `tauri-plugin-sql` ([src/lib/db.ts](src/lib/db.ts), single shared `sqlite:inspo.db` connection). Rust never touches the DB. This is why export/import is a two-sided dance: JS dumps/applies the DB rows as an opaque `manifest` string, Rust embeds/restores the referenced asset files ([src/lib/exportImport.ts](src/lib/exportImport.ts) ↔ `bundle.rs`).
 
-Tauri commands are registered in [src-tauri/src/lib.rs](src-tauri/src/lib.rs): `save_image`, `download_image`, `save_audio`, `export_data`, `import_data`. Migrations are also registered there and run automatically on DB load.
+Tauri commands are registered in [src-tauri/src/lib.rs](src-tauri/src/lib.rs): `save_image`, `download_image`, `export_data`, `import_data`. Migrations are also registered there and run automatically on DB load.
 
 ### Data model & persistence
 
-Schema lives in [src-tauri/migrations/](src-tauri/migrations/) (versioned `.sql` files, applied in order). Core canvas tables — `boards`, `groups`, `items`, `notes` — plus `settings` (key/value) and `tracks` (music). Everything is scoped to a board and cascade-deletes via FK.
+Schema lives in [src-tauri/migrations/](src-tauri/migrations/) (versioned `.sql` files, applied in order). Core canvas tables — `boards`, `groups`, `items`, `notes` — plus `settings` (key/value) and `tracks`. `tracks` (and `<app_data>/audio/`) are **legacy**: the music widget was removed, but the table and files are left in place and still ride along in export/import (import wipes every table, so dropping tracks from the bundle would delete them). Nothing else reads them. Everything is scoped to a board and cascade-deletes via FK.
 
-- **DB columns are `snake_case`; app types are `camelCase`.** The camelCase domain types `Board`/`Group`/`Item` live in [src/types/board.ts](src/types/board.ts); [src/lib/repo.ts](src/lib/repo.ts) owns the SQL + row⇄domain mapping for those tables, and the parallel [src/lib/notes.ts](src/lib/notes.ts) (notes) and [src/lib/tracks.ts](src/lib/tracks.ts) (music) do the same for their own tables, declaring their types inline. Everything above these works purely in the domain types. Add a column → update the migration, the `*Row` interface, the mapper, and the type.
-- **Binary assets are never stored in the DB.** Files are written to `<app_data>/images/<uuid>.<ext>` and `<app_data>/audio/...`; the DB stores only the *relative* path. The front end resolves that back to a loadable URL with `convertFileSrc` via [src/lib/assets.ts](src/lib/assets.ts) `resolveAssetSrc`. The asset protocol is scoped to `$APPDATA/**` in [tauri.conf.json](src-tauri/tauri.conf.json).
+- **DB columns are `snake_case`; app types are `camelCase`.** The camelCase domain types `Board`/`Group`/`Item` live in [src/types/board.ts](src/types/board.ts); [src/lib/repo.ts](src/lib/repo.ts) owns the SQL + row⇄domain mapping for those tables, and the parallel [src/lib/notes.ts](src/lib/notes.ts) does the same for notes, declaring their types inline. Everything above these works purely in the domain types. Add a column → update the migration, the `*Row` interface, the mapper, and the type.
+- **Binary assets are never stored in the DB.** Files are written to `<app_data>/images/<uuid>.<ext>`; the DB stores only the *relative* path. The front end resolves that back to a loadable URL with `convertFileSrc` via [src/lib/assets.ts](src/lib/assets.ts) `resolveAssetSrc`. The asset protocol is scoped to `$APPDATA/**` in [tauri.conf.json](src-tauri/tauri.conf.json).
 
 ### State: Zustand stores
 
-Three stores, each self-initializing (guard against React StrictMode's double-mount via a module-level `initStarted` flag):
+Two data stores, each self-initializing (guard against React StrictMode's double-mount via a module-level `initStarted` flag), plus a transient toast store:
 
 - [src/store/boardStore.ts](src/store/boardStore.ts) — the big one. Holds the active board, all boards, items, groups. Every mutation follows **optimistic-update-then-persist**: patch in-memory state via `set`, then call the matching `repo.ts` function. High-frequency writes (viewport pan/zoom) are **debounced** (400 ms) with a `flush()` escape hatch fired on board-switch and window close so the last position is never lost. Grouping, z-ordering, and multi-select expansion all live here.
+  - **Undo/redo** is a command stack of inverse closures in the same store (`record(...)`, capped at 100, dropped on board switch). A mutation that should be undoable calls `record({ label, undo, redo })` with whatever it needs to reverse itself; an `applying` flag keeps replays from recording entries of their own. Restores re-insert rows with their **original ids** (`createItem`/`createNote` accept `id`, `repo.restoreGroup` for groups), and pruned groups come back *before* their members or the items→groups FK fails. Note text is deliberately not recorded — the textarea's native undo owns it. Entries with the same `mergeKey` recorded within 1 s fold into one (first undo, latest redo), which is how a run of arrow-key nudges undoes as a single move.
+  - Persistence failures go through `fail()`, which toasts. `removeItems`/`removeNote` etc. report and **resolve** rather than throw, so a caller that follows up (the Undo toast in Canvas) checks that `undoId` actually changed.
 - [src/store/themeStore.ts](src/store/themeStore.ts) — applies a theme by writing CSS custom properties onto `<html>`; presets + a custom editor live in [src/lib/themes.ts](src/lib/themes.ts). All UI colors are `var(--...)` tokens.
-- [src/store/musicStore.ts](src/store/musicStore.ts) — wraps a single `HTMLAudioElement`. Playlist = a bundled default track (a synthetic `Track` with no DB row, Vite-resolved asset URL) + user tracks. Note the autoplay handling: WebViews block autoplay until a user gesture, so a persisted "playing" state arms a one-shot first-interaction retry.
+- [src/store/toastStore.ts](src/store/toastStore.ts) — transient notifications (info / success / error / progress, optional single action) rendered by [Toaster.tsx](src/components/Toaster.tsx). Anything may call `toast.*`; auto-dismiss timers live outside React state and pause while the pointer or focus is on a toast.
 
-Play/mute/volume/theme/active-board and other prefs persist to the `settings` table via [src/lib/settings.ts](src/lib/settings.ts).
+Theme, active board and other prefs persist to the `settings` table via [src/lib/settings.ts](src/lib/settings.ts).
 
 ### Boards, tabs & backgrounds
 
@@ -149,7 +151,7 @@ Frameless window (`decorations: false`) with a custom [src/components/TitleBar.t
 ## Conventions
 
 - Path aliases: none — relative imports throughout.
-- Styling: Tailwind CSS 4 (via `@tailwindcss/vite`) + CSS variable theme tokens; prefer `var(--token)` over hard-coded colors so themes keep working. Global tokens/utilities live in [src/index.css](src/index.css) and [src/App.css](src/App.css).
+- Styling: Tailwind CSS 4 (via `@tailwindcss/vite`) + CSS variable theme tokens; prefer `var(--token)` over hard-coded colors so themes keep working. Global tokens/utilities live in [src/index.css](src/index.css).
 - Icons: `lucide-react`.
 - IDs are UUIDs generated in `repo.ts` on create.
 - When adding a Tauri command, register it in the `generate_handler!` list in `lib.rs`; when adding a schema change, add a *new* numbered migration file and register it there too (never edit an applied migration).

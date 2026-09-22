@@ -1,9 +1,8 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { appDataDir, join } from "@tauri-apps/api/path";
 
-// Shared frontend helpers for stored binary assets (images + audio). The Rust
-// commands own writing bytes; this resolves stored relative paths back into
-// asset URLs and holds the small bits both lib/images.ts and lib/audio.ts need.
+// Shared frontend helpers for stored binary assets. The Rust commands own
+// writing bytes; this resolves stored relative paths back into asset URLs.
 
 // appDataDir is stable for the process; resolve it once.
 let appDataDirPromise: Promise<string> | null = null;

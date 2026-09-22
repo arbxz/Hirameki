@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 use uuid::Uuid;
 
-// Shared binary-asset storage for images.rs and audio.rs: write user-supplied
+// Shared binary-asset storage (used by images.rs): write user-supplied
 // bytes to a fixed, scoped subdir under the app data dir and return the relative
 // path ("<subdir>/<uuid>.<ext>") the DB stores. The frontend resolves that path
 // to an asset URL at render via convertFileSrc.

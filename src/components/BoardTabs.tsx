@@ -4,6 +4,7 @@ import { useBoardStore } from "../store/boardStore";
 import { BoardModal } from "./BoardModal";
 import { BackgroundModal } from "./BackgroundModal";
 import { ConfirmModal } from "./Modal";
+import { useMenuKeyboard } from "./useMenuKeyboard";
 import type { Board } from "../types/board";
 
 // Board switcher rendered as a row of buttons inside the toolbar. Click a board
@@ -32,6 +33,7 @@ export function BoardTabs() {
   );
   const [pendingDelete, setPendingDelete] = useState<Board | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  useMenuKeyboard(menuRef, menu !== null, () => setMenu(null));
 
   // Close the context menu on an outside click.
   useEffect(() => {
@@ -70,7 +72,12 @@ export function BoardTabs() {
                   ? "bg-[var(--accent)]/20 text-[var(--text)]"
                   : "text-[var(--text-dim)] hover:bg-[var(--surface-hover)]"
               }`}
-              title={`${b.name} — right-click for options`}
+              aria-label={`${b.name} board${active ? " (current)" : ""}`}
+              aria-current={active ? "true" : undefined}
+              aria-haspopup="menu"
+              // The context-menu key and Shift+F10 fire contextmenu on the
+              // focused tab too, so the menu is reachable without a mouse.
+              title={`${b.name} — right-click or Shift+F10 for options`}
             >
               <span
                 className="h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-black/20"
@@ -84,6 +91,7 @@ export function BoardTabs() {
         <button
           onClick={() => setEditing({ mode: "create" })}
           className="grid h-8 w-8 shrink-0 place-items-center rounded text-[var(--text-dim)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
+          aria-label="New board"
           title="New board"
         >
           <Plus size={15} />
@@ -94,6 +102,8 @@ export function BoardTabs() {
       {menu && (
         <div
           ref={menuRef}
+          role="menu"
+          aria-label="Board options"
           className="ui-chrome fixed z-[3000] w-36 overflow-hidden rounded-lg bg-[var(--surface-solid)] py-1 text-xs text-[var(--text)] shadow-2xl ring-1 ring-[var(--border)]"
           style={{ left: menu.x, top: menu.y }}
         >
@@ -103,7 +113,8 @@ export function BoardTabs() {
             return (
               <>
                 <button
-                  className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-[var(--surface-hover)]"
+                  role="menuitem"
+                  className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-[var(--surface-hover)] focus-visible:bg-[var(--surface-hover)]"
                   onClick={() => {
                     setMenu(null);
                     setEditing({ mode: "edit", board: b });
@@ -112,7 +123,8 @@ export function BoardTabs() {
                   <Pencil size={13} /> Rename
                 </button>
                 <button
-                  className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-[var(--surface-hover)]"
+                  role="menuitem"
+                  className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-[var(--surface-hover)] focus-visible:bg-[var(--surface-hover)]"
                   onClick={() => {
                     setMenu(null);
                     setEditing({ mode: "background", board: b });
@@ -121,8 +133,15 @@ export function BoardTabs() {
                   <ImageIcon size={13} /> Background
                 </button>
                 <button
+                  role="menuitem"
                   className="flex w-full items-center gap-2 px-3 py-1.5 text-red-400 hover:bg-red-500/20 disabled:opacity-40"
                   disabled={boards.length <= 1}
+                  // Say why it's greyed out instead of leaving a dead control.
+                  title={
+                    boards.length <= 1
+                      ? "The only board can't be deleted"
+                      : undefined
+                  }
                   onClick={() => {
                     setMenu(null);
                     setPendingDelete(b);

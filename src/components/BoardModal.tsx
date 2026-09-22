@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { Modal } from "./Modal";
 
@@ -18,6 +18,24 @@ export const TAB_COLORS = [
   "#f472b6", // pink
 ];
 
+// Spoken names for the swatches; a hex code is not a colour name.
+const TAB_COLOR_NAMES: Record<string, string> = {
+  "#f87171": "Red",
+  "#fb923c": "Orange",
+  "#fbbf24": "Amber",
+  "#34d399": "Green",
+  "#38bdf8": "Sky",
+  "#818cf8": "Indigo",
+  "#c084fc": "Purple",
+  "#f472b6": "Pink",
+};
+
+// Selected swatch: a gap in the dialog colour, then a ring in the text colour.
+// The old ring was drawn in the swatch's own colour with no gap, so it just
+// made the dot 2px bigger — hard to spot, and invisible for a colour-blind eye.
+const SELECTED_RING =
+  "0 0 0 2px var(--surface-solid), 0 0 0 4px var(--text)";
+
 export function BoardModal({
   title,
   initialName,
@@ -36,6 +54,8 @@ export function BoardModal({
   const [name, setName] = useState(initialName ?? "");
   const [color, setColor] = useState<string | null>(initialColor ?? null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const nameId = useId();
+  const colorLabelId = useId();
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -46,10 +66,14 @@ export function BoardModal({
 
   return (
     <Modal title={title} onClose={onCancel}>
-      <label className="mb-1 block text-[11px] text-[var(--text-dim)]">
+      <label
+        htmlFor={nameId}
+        className="mb-1 block text-[11px] text-[var(--text-dim)]"
+      >
         Name
       </label>
       <input
+        id={nameId}
         ref={inputRef}
         value={name}
         onChange={(e) => setName(e.target.value)}
@@ -60,15 +84,23 @@ export function BoardModal({
         className="mb-4 w-full rounded-lg bg-[var(--surface)] px-2.5 py-1.5 text-sm text-[var(--text)] outline-none ring-1 ring-[var(--border)] focus:ring-[var(--accent)]"
       />
 
-      <label className="mb-1.5 block text-[11px] text-[var(--text-dim)]">
+      <div
+        id={colorLabelId}
+        className="mb-1.5 block text-[11px] text-[var(--text-dim)]"
+      >
         Tag color
-      </label>
-      <div className="mb-5 flex flex-wrap items-center gap-2">
+      </div>
+      <div
+        role="group"
+        aria-labelledby={colorLabelId}
+        className="mb-5 flex flex-wrap items-center gap-2"
+      >
         <button
           onClick={() => setColor(null)}
-          className={`grid h-6 w-6 place-items-center rounded-full ring-1 ring-[var(--border)] ${
-            color === null ? "ring-2 ring-[var(--accent)]" : ""
-          }`}
+          className="grid h-6 w-6 place-items-center rounded-full ring-1 ring-[var(--border)]"
+          style={color === null ? { boxShadow: SELECTED_RING } : undefined}
+          aria-label="No tag"
+          aria-pressed={color === null}
           title="No tag"
         >
           <X size={12} className="text-[var(--text-dim)]" />
@@ -80,9 +112,11 @@ export function BoardModal({
             className="h-6 w-6 rounded-full"
             style={{
               background: c,
-              ...(color === c ? { boxShadow: `0 0 0 2px ${c}` } : {}),
+              ...(color === c ? { boxShadow: SELECTED_RING } : {}),
             }}
-            title={c}
+            aria-label={TAB_COLOR_NAMES[c] ?? c}
+            aria-pressed={color === c}
+            title={TAB_COLOR_NAMES[c] ?? c}
           />
         ))}
       </div>
@@ -94,8 +128,11 @@ export function BoardModal({
         >
           Cancel
         </button>
+        {/* Text in the canvas colour, not white: most presets have a light
+            accent (white on the Dark sky-400 is 2.1:1), and every preset's
+            bg sits at 5:1 or more against its own accent. */}
         <button
-          className="rounded-lg bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
+          className="rounded-lg bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--bg)] hover:opacity-90"
           onClick={submit}
         >
           {confirmLabel}

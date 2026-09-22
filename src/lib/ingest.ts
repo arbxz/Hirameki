@@ -21,8 +21,25 @@ interface World {
   y: number;
 }
 
+/** Outcome of a batch. Partial success is normal: one bad URL in a drop of
+ *  twenty shouldn't cost the other nineteen. */
+export interface IngestResult {
+  added: number;
+  failed: number;
+  /** Message from the first failure, for reporting. */
+  error?: string;
+}
+
+/** Progress ticks so the caller can show "Adding 3 of 12…". */
+export type OnProgress = (done: number, total: number) => void;
+
 // Each successive item in a multi-drop is nudged so they don't stack exactly.
 const CASCADE = 28;
+
+// How many images to process at once. Enough to overlap network latency on a
+// multi-URL drop, low enough that several large files aren't held in memory as
+// IPC payloads simultaneously.
+const CONCURRENCY = 3;
 
 async function ingestFile(file: File, at: World, addItem: AddItem): Promise<void> {
   // Measure from an object URL before persisting so the item gets correct
@@ -64,46 +81,83 @@ async function ingestUrl(url: string, at: World, addItem: AddItem): Promise<void
   });
 }
 
+/**
+ * Run `task` over every entry with a bounded number in flight, collecting
+ * failures instead of rejecting on the first one. Each task keeps its original
+ * index so cascade offsets stay deterministic regardless of completion order.
+ */
+async function runBatch<T>(
+  entries: T[],
+  task: (entry: T, index: number) => Promise<void>,
+  onProgress?: OnProgress,
+): Promise<IngestResult> {
+  const total = entries.length;
+  let added = 0;
+  let failed = 0;
+  let error: string | undefined;
+  let next = 0;
+
+  const worker = async () => {
+    for (;;) {
+      const i = next++;
+      if (i >= total) return;
+      try {
+        await task(entries[i], i);
+        added++;
+      } catch (e) {
+        failed++;
+        error ??= String(e);
+      }
+      onProgress?.(added + failed, total);
+    }
+  };
+
+  await Promise.all(
+    Array.from({ length: Math.min(CONCURRENCY, total) }, worker),
+  );
+  return { added, failed, error };
+}
+
 /** Ingest a list of files (from drop, paste, or the upload picker). */
 export async function ingestFiles(
   files: File[],
   at: World,
   addItem: AddItem,
-): Promise<void> {
+  onProgress?: OnProgress,
+): Promise<IngestResult> {
   const images = files.filter((f) => f.type.startsWith("image/"));
-  for (let i = 0; i < images.length; i++) {
-    const offset = i * CASCADE;
-    await ingestFile(
-      images[i],
-      { x: at.x + offset, y: at.y + offset },
-      addItem,
-    );
-  }
+  return runBatch(
+    images,
+    (file, i) =>
+      ingestFile(file, { x: at.x + i * CASCADE, y: at.y + i * CASCADE }, addItem),
+    onProgress,
+  );
 }
 
 /**
  * Ingest a browser DataTransfer (from a drop or paste). Prefers real files;
- * otherwise falls back to a dragged/pasted image URL. Returns true if anything
- * was ingested.
+ * otherwise falls back to a dragged/pasted image URL.
  */
 export async function ingestDataTransfer(
   dt: DataTransfer,
   at: World,
   addItem: AddItem,
-): Promise<boolean> {
+  onProgress?: OnProgress,
+): Promise<IngestResult> {
   const files = Array.from(dt.files);
   if (files.some((f) => f.type.startsWith("image/"))) {
-    await ingestFiles(files, at, addItem);
-    return true;
+    return ingestFiles(files, at, addItem, onProgress);
   }
 
   // Dragged image links arrive as uri-list or plain text.
-  const uri =
-    dt.getData("text/uri-list") || dt.getData("text/plain") || "";
+  const uri = dt.getData("text/uri-list") || dt.getData("text/plain") || "";
   const candidate = uri.split(/\s+/).find(looksLikeUrl);
   if (candidate) {
-    await ingestUrl(candidate, at, addItem);
-    return true;
+    return runBatch(
+      [candidate],
+      (url) => ingestUrl(url, at, addItem),
+      onProgress,
+    );
   }
-  return false;
+  return { added: 0, failed: 0 };
 }

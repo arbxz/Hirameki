@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Download,
+  Keyboard,
   Palette,
   RefreshCw,
   Settings,
@@ -13,6 +14,8 @@ import { PRESETS, THEME_TOKENS, type Theme } from "../lib/themes";
 import { exportBundle, importBundle } from "../lib/exportImport";
 import { useBoardStore } from "../store/boardStore";
 import { checkForUpdates } from "../lib/updater";
+import { ShortcutsModal } from "./ShortcutsModal";
+import { ConfirmModal } from "./Modal";
 
 // Settings panel (top-right, ui-chrome). Theme presets + a custom color editor,
 // plus full-board export/import. Mostly themes the background and UI chrome.
@@ -42,6 +45,23 @@ export function SettingsPanel() {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<null | "export" | "import">(null);
   const [checking, setChecking] = useState(false);
+  const [shortcuts, setShortcuts] = useState(false);
+  const [confirmImport, setConfirmImport] = useState(false);
+  const toggleRef = useRef<HTMLButtonElement>(null);
+
+  // Escape closes the panel and hands focus back to its toggle. Skipped while
+  // a dialog is up: that Escape belongs to the dialog.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (document.querySelector('[aria-modal="true"]')) return;
+      setOpen(false);
+      toggleRef.current?.focus();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
 
   const doCheckUpdates = async () => {
     setChecking(true);
@@ -84,13 +104,17 @@ export function SettingsPanel() {
       <button
         className="grid h-10 w-10 place-items-center rounded-lg bg-[var(--surface)] text-[var(--text)] shadow-lg ring-1 ring-[var(--border)] backdrop-blur hover:bg-[var(--surface-hover)]"
         onClick={() => void addNote()}
+        aria-label="Add note"
         title="Add note"
       >
         <StickyNote size={16} />
       </button>
       <button
+        ref={toggleRef}
         className="grid h-10 w-10 place-items-center rounded-lg bg-[var(--surface)] text-[var(--text)] shadow-lg ring-1 ring-[var(--border)] backdrop-blur hover:bg-[var(--surface-hover)]"
         onClick={() => setOpen((o) => !o)}
+        aria-label={open ? "Close settings" : "Settings"}
+        aria-expanded={open}
         title="Settings"
       >
         {open ? <X size={16} /> : <Settings size={16} />}
@@ -107,6 +131,7 @@ export function SettingsPanel() {
               <button
                 key={presetName}
                 onClick={() => selectPreset(presetName)}
+                aria-pressed={name === presetName}
                 className={`flex flex-col items-center gap-1 rounded-lg p-2 ring-1 ${
                   name === presetName
                     ? "ring-[var(--accent)]"
@@ -150,6 +175,7 @@ export function SettingsPanel() {
                     <input
                       type="color"
                       value={hexForPicker(custom[token])}
+                      aria-label={`${TOKEN_LABELS[token]} colour picker`}
                       onChange={(e) => setCustomToken(token, e.target.value)}
                       className="h-6 w-6 cursor-pointer rounded border-0 bg-transparent p-0"
                     />
@@ -172,7 +198,8 @@ export function SettingsPanel() {
                 {busy === "export" ? "Exporting…" : "Export"}
               </button>
               <button
-                onClick={doImport}
+                // Import wipes every board before restoring, so it asks first.
+                onClick={() => setConfirmImport(true)}
                 disabled={busy !== null}
                 className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-[var(--surface-hover)] px-2 py-1.5 text-xs hover:opacity-80 disabled:opacity-40"
               >
@@ -181,14 +208,21 @@ export function SettingsPanel() {
               </button>
             </div>
             <p className="mt-1.5 text-[10px] leading-snug text-[var(--text-dim)]">
-              Export bundles every image &amp; sound into one file. Import
-              replaces the current board.
+              Export saves every board and image into one file. Import
+              replaces all boards on this device.
             </p>
           </div>
 
           {/* app / updates */}
           <div className="mt-3 border-t border-[var(--border)] pt-3">
             <div className="mb-1.5 text-xs font-semibold">App</div>
+            <button
+              onClick={() => setShortcuts(true)}
+              className="mb-1.5 flex w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--surface-hover)] px-2 py-1.5 text-xs hover:opacity-80"
+            >
+              <Keyboard size={14} />
+              Keyboard shortcuts
+            </button>
             <button
               onClick={doCheckUpdates}
               disabled={checking}
@@ -199,6 +233,20 @@ export function SettingsPanel() {
             </button>
           </div>
         </div>
+      )}
+
+      {shortcuts && <ShortcutsModal onClose={() => setShortcuts(false)} />}
+      {confirmImport && (
+        <ConfirmModal
+          title="Replace all boards?"
+          message="Importing deletes every board, image and note on this device and replaces them with the bundle's contents. Export first if you want a backup."
+          confirmLabel="Choose file…"
+          onConfirm={() => {
+            setConfirmImport(false);
+            void doImport();
+          }}
+          onClose={() => setConfirmImport(false)}
+        />
       )}
     </div>
   );
