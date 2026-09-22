@@ -4,21 +4,31 @@ import {
   BringToFront,
   Group as GroupIcon,
   ImagePlus,
+  Maximize,
   Minus,
   Plus,
+  Redo2,
   SendToBack,
   StickyNote,
   Trash2,
+  Undo2,
   Ungroup,
 } from "lucide-react";
 import { useBoardStore } from "../store/boardStore";
-import { ingestDataTransfer, ingestFiles } from "../lib/ingest";
+import { toast, useToastStore } from "../store/toastStore";
+import {
+  ingestDataTransfer,
+  ingestFiles,
+  type IngestResult,
+  type OnProgress,
+} from "../lib/ingest";
 import { ItemView } from "./ItemView";
 import { NoteView } from "./NoteView";
 import { SelectionLayer } from "./SelectionLayer";
 import { BoardBackground } from "./BoardBackground";
 import { BoardTabs } from "./BoardTabs";
-import { ConfirmModal } from "./Modal";
+import { ShortcutsModal } from "./ShortcutsModal";
+import { boundsOf, fitView, type Box } from "../lib/geometry";
 
 // Phase 4: items can be selected (click / shift-click / marquee), then dragged,
 // resized, rotated, reordered, and deleted. Navigation (Space-pan, Ctrl-zoom)
@@ -31,6 +41,81 @@ const GRID = 40;
 // One mouse notch is a fixed step; a touchpad pinch scales with its own delta.
 const WHEEL_ZOOM_STEP = 0.12;
 const PINCH_ZOOM_RATE = 0.01;
+
+// Margin left around the content when zooming to fit, in screen px.
+const FIT_PADDING = 80;
+
+// How long an ingest may run before it earns a spinner. Dropping a single local
+// file usually finishes well inside this, and flashing a toast for it would be
+// noisier than the image simply appearing.
+const SPINNER_DELAY = 350;
+
+/**
+ * Runs an ingest batch with progress reporting. Downloading a remote image goes
+ * through Rust and can take seconds, during which the app previously showed
+ * nothing at all — so a slow batch gets a live progress toast, and a batch with
+ * failures always reports them (a partial success used to be indistinguishable
+ * from doing nothing).
+ */
+async function withIngestFeedback(
+  run: (onProgress: OnProgress) => Promise<IngestResult>,
+): Promise<void> {
+  const toasts = () => useToastStore.getState();
+  let toastId: string | null = null;
+  let seen = { done: 0, total: 0 };
+
+  const label = () =>
+    seen.total > 1
+      ? `Adding ${seen.done + 1} of ${seen.total}…`
+      : "Adding image…";
+
+  const timer = setTimeout(() => {
+    toastId = toast.progress(label());
+  }, SPINNER_DELAY);
+
+  const onProgress: OnProgress = (done, total) => {
+    seen = { done, total };
+    if (toastId && done < total) toasts().update(toastId, { message: label() });
+  };
+
+  let result: IngestResult;
+  try {
+    result = await run(onProgress);
+  } catch (e) {
+    // A whole-batch failure (rather than a per-image one).
+    clearTimeout(timer);
+    if (toastId) toasts().dismiss(toastId);
+    toast.error(`Couldn't add images: ${String(e)}`);
+    return;
+  }
+  clearTimeout(timer);
+
+  const { added, failed, error } = result;
+  if (failed > 0) {
+    if (toastId) toasts().dismiss(toastId);
+    const what = added > 0 ? `${failed} of ${added + failed} images` : "image";
+    toast.error(`Couldn't add ${what}${error ? `: ${error}` : ""}`);
+    return;
+  }
+  if (!toastId) return; // fast path: the images appearing is feedback enough
+  if (added === 0) {
+    toasts().dismiss(toastId);
+  } else {
+    toasts().update(toastId, {
+      kind: "success",
+      message: `Added ${added} ${added === 1 ? "image" : "images"}`,
+    });
+  }
+}
+
+/** Inline keycap for the empty-state hints. */
+function Kbd({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="mx-0.5 rounded border border-[var(--border)] bg-[var(--surface)] px-1 py-px font-medium text-[var(--text)]">
+      {children}
+    </span>
+  );
+}
 
 export function Canvas() {
   const viewerRef = useRef<InfiniteViewer>(null);
@@ -52,14 +137,21 @@ export function Canvas() {
   const sendToBack = useBoardStore((s) => s.sendToBack);
   const groupItems = useBoardStore((s) => s.groupItems);
   const ungroupItems = useBoardStore((s) => s.ungroupItems);
+  const undo = useBoardStore((s) => s.undo);
+  const redo = useBoardStore((s) => s.redo);
+  const undoLabel = useBoardStore((s) => s.undoLabel);
+  const redoLabel = useBoardStore((s) => s.redoLabel);
 
   const [zoom, setZoom] = useState(1);
   const [scroll, setScroll] = useState({ x: 0, y: 0 });
   const [spaceHeld, setSpaceHeld] = useState(false);
+  // Shift frees the aspect-ratio lock while resizing (see SelectionLayer).
+  const [shiftHeld, setShiftHeld] = useState(false);
+  const [zoomMenu, setZoomMenu] = useState(false);
+  const [middlePanning, setMiddlePanning] = useState(false);
+  const [shortcuts, setShortcuts] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  // Holds the ids awaiting delete confirmation (null = no prompt open).
-  const [pendingDelete, setPendingDelete] = useState<string[] | null>(null);
   // Right-click "Add note here" menu: screen position + the world point to place
   // the note at (null = closed).
   const [noteMenu, setNoteMenu] = useState<{
@@ -72,17 +164,29 @@ export function Canvas() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
-  // Open the delete confirmation for the given ids (no-op if empty).
-  const requestDelete = (ids: string[]) => {
-    if (ids.length) setPendingDelete(ids);
-  };
-
-  const confirmDelete = () => {
-    const ids = pendingDelete;
-    setPendingDelete(null);
-    if (!ids?.length) return;
-    void removeItems(ids).catch((err) => setError(String(err)));
+  // Delete straight away and offer an undo, rather than gating on a modal:
+  // the action is now reversible, so a confirmation would be friction on every
+  // delete to guard against a mistake the undo already covers. (Board deletion
+  // still confirms — that one isn't undoable.)
+  const deleteItems = (ids: string[]) => {
+    if (!ids.length) return;
+    const count = ids.length;
+    const topBefore = useBoardStore.getState().undoId;
     setSelectedIds([]);
+    void removeItems(ids)
+      .then(() => {
+        // removeItems reports its own failures and resolves without recording
+        // an entry. Offering Undo then would reverse the *previous* action.
+        const entryId = useBoardStore.getState().undoId;
+        if (!entryId || entryId === topBefore) return;
+        // Bind the toast to this specific history entry, so clicking Undo a few
+        // seconds later can't reverse something the user did in between.
+        toast.info(`Deleted ${count} ${count === 1 ? "image" : "images"}`, {
+          label: "Undo",
+          run: () => void undo(entryId),
+        });
+      })
+      .catch((err) => setError(String(err)));
   };
 
   // Render in z-order so reordering is visible.
@@ -122,8 +226,10 @@ export function Canvas() {
   const selectedRef = useRef<string[]>([]);
   selectedRef.current = selectedIds;
 
-  const pendingDeleteRef = useRef<string[] | null>(null);
-  pendingDeleteRef.current = pendingDelete;
+  // The key handler registers once, so the fit actions reach it through refs
+  // written during render (same pattern as viewRef/selectedRef above).
+  const zoomToFitRef = useRef<() => void>(() => {});
+  const zoomToSelectionRef = useRef<() => void>(() => {});
 
   // True while we're programmatically restoring a saved viewport; see the
   // restore effect below for why the echoed events must not be persisted.
@@ -175,15 +281,20 @@ export function Canvas() {
         'input, textarea, [contenteditable="true"]',
       );
     const down = (e: KeyboardEvent) => {
+      if (e.shiftKey) setShiftHeld(true);
       if (e.code === "Space" && !isEditable(e.target)) {
         e.preventDefault();
         if (!e.repeat) setSpaceHeld(true);
       }
     };
     const up = (e: KeyboardEvent) => {
+      if (!e.shiftKey) setShiftHeld(false);
       if (e.code === "Space") setSpaceHeld(false);
     };
-    const blur = () => setSpaceHeld(false);
+    const blur = () => {
+      setSpaceHeld(false);
+      setShiftHeld(false);
+    };
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
     window.addEventListener("blur", blur);
@@ -201,17 +312,27 @@ export function Canvas() {
         'input, textarea, [contenteditable="true"]',
       );
     const onKey = (e: KeyboardEvent) => {
+      // isEditable also keeps Ctrl+Z inside a note's textarea on the browser's
+      // native text undo instead of reversing a canvas action.
       if (isEditable(e.target)) return;
-      // While the confirm prompt is open, only Escape (cancel) is meaningful.
-      if (pendingDeleteRef.current) {
-        if (e.key === "Escape") setPendingDelete(null);
-        return;
-      }
+      // A dialog blocks the canvas behind it: Delete or Ctrl+Z pressed while
+      // focus sits on a dialog button must not edit the board underneath.
+      // The dialog handles its own Escape.
+      if (document.querySelector('[aria-modal="true"]')) return;
       const sel = selectedRef.current;
       const mod = e.ctrlKey || e.metaKey;
-      if ((e.key === "Delete" || e.key === "Backspace") && sel.length) {
+      if (!mod && e.key === "?") {
         e.preventDefault();
-        requestDelete(sel);
+        setShortcuts((o) => !o);
+      } else if (mod && (e.key === "z" || e.key === "Z")) {
+        e.preventDefault();
+        void (e.shiftKey ? redo() : undo());
+      } else if (mod && (e.key === "y" || e.key === "Y")) {
+        e.preventDefault();
+        void redo();
+      } else if ((e.key === "Delete" || e.key === "Backspace") && sel.length) {
+        e.preventDefault();
+        deleteItems(sel);
       } else if (e.key === "Escape") {
         setSelectedIds([]);
       } else if (mod && (e.key === "g" || e.key === "G")) {
@@ -228,11 +349,71 @@ export function Canvas() {
       } else if (sel.length && mod && e.key === "[") {
         e.preventDefault();
         sendToBack(sel);
+      } else if (!mod && e.shiftKey && (e.key === "!" || e.code === "Digit1")) {
+        // Shift+1 / Shift+2 — the layouts differ on what `key` reports, so
+        // match the physical digit too.
+        e.preventDefault();
+        zoomToFitRef.current();
+      } else if (!mod && e.shiftKey && (e.key === "@" || e.code === "Digit2")) {
+        e.preventDefault();
+        zoomToSelectionRef.current();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [removeItems, bringToFront, sendToBack, groupItems, ungroupItems]);
+    // deleteItems closes over stable store actions only; selection is read
+    // through selectedRef so this handler registers once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [removeItems, bringToFront, sendToBack, groupItems, ungroupItems, undo, redo]);
+
+  // Middle-drag to pan, the convention in every other canvas tool (Figma, Miro,
+  // PureRef). InfiniteViewer's own mouse-drag is bound to Space+left, so this is
+  // handled here: track the gesture on window so it survives the cursor leaving
+  // the canvas, and suppress the default middle-click autoscroll.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    let start: { cx: number; cy: number; sx: number; sy: number } | null = null;
+
+    const down = (e: MouseEvent) => {
+      if (e.button !== 1 || !el.contains(e.target as Node)) return;
+      e.preventDefault();
+      const { scroll: sc } = viewRef.current;
+      start = { cx: e.clientX, cy: e.clientY, sx: sc.x, sy: sc.y };
+      setMiddlePanning(true);
+    };
+    const move = (e: MouseEvent) => {
+      if (!start) return;
+      const { zoom: z } = viewRef.current;
+      const at = {
+        x: start.sx - (e.clientX - start.cx) / z,
+        y: start.sy - (e.clientY - start.cy) / z,
+      };
+      viewerRef.current?.scrollTo(at.x, at.y);
+      setScroll(at);
+      setView({ ...at, zoom: z });
+    };
+    const up = (e: MouseEvent) => {
+      if (e.button !== 1 || !start) return;
+      start = null;
+      setMiddlePanning(false);
+    };
+    // Chromium opens its scroll-anchor widget on auxclick; cancel it.
+    const aux = (e: MouseEvent) => {
+      if (e.button === 1) e.preventDefault();
+    };
+
+    el.addEventListener("mousedown", down);
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+    el.addEventListener("auxclick", aux);
+    return () => {
+      el.removeEventListener("mousedown", down);
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
+      el.removeEventListener("auxclick", aux);
+    };
+  }, [setView]);
 
   // Close the right-click note menu on Escape.
   useEffect(() => {
@@ -297,11 +478,11 @@ export function Canvas() {
       const target = e.target as HTMLElement | null;
       if (target?.closest?.('input, textarea, [contenteditable="true"]')) return;
       if (!e.clipboardData) return;
-      void ingestDataTransfer(
-        e.clipboardData,
-        viewportCenterWorld(),
-        addItem,
-      ).catch((err) => setError(String(err)));
+      const dt = e.clipboardData;
+      const at = viewportCenterWorld();
+      void withIngestFeedback((onProgress) =>
+        ingestDataTransfer(dt, at, addItem, onProgress),
+      );
     };
     window.addEventListener("paste", onPaste);
     return () => window.removeEventListener("paste", onPaste);
@@ -357,12 +538,43 @@ export function Canvas() {
     setZoom(1);
   };
 
+  /**
+   * Move the viewport so `box` (world coords) fills it with a margin. Solves the
+   * same screenToWorld relation as zoomAt, but for a whole rect: putting the
+   * box's centre at the viewport's centre means scroll = centre - half a
+   * viewport's worth of world units.
+   */
+  const fitToBox = (box: Box | null) => {
+    const viewer = viewerRef.current;
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!viewer || !rect || !box) return;
+    const next = fitView(box, rect, {
+      padding: FIT_PADDING,
+      minZoom: MIN_ZOOM,
+      maxZoom: MAX_ZOOM,
+    });
+    if (!next) return;
+    const at = { x: next.x, y: next.y };
+    viewer.setZoom(next.zoom);
+    viewer.scrollTo(at.x, at.y);
+    setZoom(next.zoom);
+    setScroll(at);
+    setView({ ...at, zoom: next.zoom });
+  };
+
+  const zoomToFit = () => fitToBox(boundsOf(items, notes));
+  const zoomToSelection = () =>
+    fitToBox(boundsOf(items.filter((it) => selectedIds.includes(it.id)), []));
+  zoomToFitRef.current = zoomToFit;
+  zoomToSelectionRef.current = zoomToSelection;
+
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
     const at = screenToWorld(e.clientX, e.clientY);
-    void ingestDataTransfer(e.dataTransfer, at, addItem).catch((err) =>
-      setError(String(err)),
+    const dt = e.dataTransfer;
+    void withIngestFeedback((onProgress) =>
+      ingestDataTransfer(dt, at, addItem, onProgress),
     );
   };
 
@@ -370,8 +582,9 @@ export function Canvas() {
     const files = Array.from(e.target.files ?? []);
     e.target.value = "";
     if (files.length === 0) return;
-    void ingestFiles(files, viewportCenterWorld(), addItem).catch((err) =>
-      setError(String(err)),
+    const at = viewportCenterWorld();
+    void withIngestFeedback((onProgress) =>
+      ingestFiles(files, at, addItem, onProgress),
     );
   };
 
@@ -408,7 +621,11 @@ export function Canvas() {
         });
       }}
       className={`relative h-full w-full select-none overflow-hidden bg-[var(--bg)] ${
-        spaceHeld ? "cursor-grab active:cursor-grabbing" : ""
+        middlePanning
+          ? "cursor-grabbing"
+          : spaceHeld
+            ? "cursor-grab active:cursor-grabbing"
+            : ""
       }`}
     >
       {/* fixed per-board background image/gif (does not pan/zoom) */}
@@ -479,8 +696,37 @@ export function Canvas() {
           selectedIds={selectedIds}
           setSelectedIds={setSelectedIds}
           panMode={spaceHeld}
+          freeRatio={shiftHeld}
           viewport={{ x: scroll.x, y: scroll.y, zoom }}
         />
+      )}
+
+      {/* first-run / empty-board guidance. Pointer-transparent so it never
+          intercepts a drop, and hidden while the drop overlay is showing. */}
+      {!loading && items.length === 0 && notes.length === 0 && !dragOver && (
+        <div className="pointer-events-none absolute inset-0 grid place-items-center">
+          <div className="flex flex-col items-center gap-3 text-center">
+            <ImagePlus
+              size={40}
+              className="text-[var(--text-dim)] opacity-40"
+              strokeWidth={1.25}
+            />
+            <p className="text-sm text-[var(--text)]">This board is empty</p>
+            <p className="max-w-xs text-xs leading-relaxed text-[var(--text-dim)]">
+              Drop images or image links anywhere, paste with{" "}
+              <Kbd>Ctrl</Kbd>
+              <Kbd>V</Kbd>, or use <span className="text-[var(--text)]">Upload
+              images</span> above.
+            </p>
+            <p className="text-[11px] text-[var(--text-dim)] opacity-70">
+              <Kbd>Space</Kbd>+drag to pan · <Kbd>Ctrl</Kbd>+scroll to zoom ·
+              right-click for a note
+            </p>
+            <p className="text-[11px] text-[var(--text-dim)] opacity-70">
+              Press <Kbd>?</Kbd> for all shortcuts
+            </p>
+          </div>
+        </div>
       )}
 
       {/* drop overlay */}
@@ -506,11 +752,32 @@ export function Canvas() {
           <ImagePlus size={14} />
           Upload images
         </button>
+        <div className="flex h-10 items-center gap-1 rounded-lg bg-[var(--surface)] px-1 text-[var(--text)] shadow-lg ring-1 ring-[var(--border)] backdrop-blur">
+          <button
+            className={`${chip} disabled:opacity-30 disabled:hover:bg-transparent`}
+            onClick={() => void undo()}
+            disabled={!undoLabel}
+            aria-label={undoLabel ? `Undo ${undoLabel}` : "Nothing to undo"}
+            title={undoLabel ? `Undo ${undoLabel} (Ctrl+Z)` : "Nothing to undo"}
+          >
+            <Undo2 size={16} />
+          </button>
+          <button
+            className={`${chip} disabled:opacity-30 disabled:hover:bg-transparent`}
+            onClick={() => void redo()}
+            disabled={!redoLabel}
+            aria-label={redoLabel ? `Redo ${redoLabel}` : "Nothing to redo"}
+            title={redoLabel ? `Redo ${redoLabel} (Ctrl+Shift+Z)` : "Nothing to redo"}
+          >
+            <Redo2 size={16} />
+          </button>
+        </div>
         {selectedIds.length > 0 && (
           <div className="flex h-10 items-center gap-1 rounded-lg bg-[var(--surface)] px-1 text-[var(--text)] shadow-lg ring-1 ring-[var(--border)] backdrop-blur">
             <button
               className={chip}
               onClick={() => bringToFront(selectedIds)}
+              aria-label="Bring to front"
               title="Bring to front (Ctrl+])"
             >
               <BringToFront size={16} />
@@ -518,6 +785,7 @@ export function Canvas() {
             <button
               className={chip}
               onClick={() => sendToBack(selectedIds)}
+              aria-label="Send to back"
               title="Send to back (Ctrl+[)"
             >
               <SendToBack size={16} />
@@ -526,6 +794,7 @@ export function Canvas() {
               <button
                 className={chip}
                 onClick={() => void groupItems(selectedIds)}
+                aria-label="Group selection"
                 title="Group (Ctrl+G)"
               >
                 <GroupIcon size={16} />
@@ -535,6 +804,7 @@ export function Canvas() {
               <button
                 className={chip}
                 onClick={() => void ungroupItems(selectedIds)}
+                aria-label="Ungroup selection"
                 title="Ungroup (Ctrl+Shift+G)"
               >
                 <Ungroup size={16} />
@@ -542,7 +812,8 @@ export function Canvas() {
             )}
             <button
               className="grid h-8 w-8 place-items-center rounded text-red-400 hover:bg-red-500/20"
-              onClick={() => requestDelete(selectedIds)}
+              onClick={() => deleteItems(selectedIds)}
+              aria-label="Delete selection"
               title="Delete (Del)"
             >
               <Trash2 size={16} />
@@ -568,20 +839,83 @@ export function Canvas() {
 
       {/* zoom controls */}
       <div className="ui-chrome absolute bottom-4 right-4 flex items-center gap-1 rounded-lg bg-[var(--surface)] p-1 text-[var(--text)] shadow-lg ring-1 ring-[var(--border)] backdrop-blur">
-        <button className={chip} onClick={() => applyZoom(zoom / 1.2)} title="Zoom out">
+        <button
+          className={chip}
+          onClick={() => applyZoom(zoom / 1.2)}
+          aria-label="Zoom out"
+          title="Zoom out"
+        >
           <Minus size={16} />
         </button>
+        <div className="relative">
+          <button
+            className="h-8 min-w-16 rounded px-2 text-xs tabular-nums hover:bg-[var(--surface-hover)]"
+            onClick={() => setZoomMenu((o) => !o)}
+            aria-haspopup="menu"
+            aria-expanded={zoomMenu}
+            aria-label={`Zoom ${Math.round(zoom * 100)} percent — change`}
+            title="Zoom options"
+          >
+            {Math.round(zoom * 100)}%
+          </button>
+          {zoomMenu && (
+            <>
+              <div className="fixed inset-0 z-40" onPointerDown={() => setZoomMenu(false)} />
+              <div
+                role="menu"
+                className="absolute bottom-10 right-0 z-50 w-52 overflow-hidden rounded-lg bg-[var(--surface-solid)] py-1 text-xs shadow-2xl ring-1 ring-[var(--border)]"
+              >
+                {[
+                  { label: "Zoom to fit", hint: "Shift+1", run: zoomToFit },
+                  {
+                    label: "Zoom to selection",
+                    hint: "Shift+2",
+                    run: zoomToSelection,
+                    disabled: selectedIds.length === 0,
+                  },
+                  { label: "Reset to 100%", hint: "", run: resetView },
+                  { label: "50%", hint: "", run: () => applyZoom(0.5) },
+                  { label: "200%", hint: "", run: () => applyZoom(2) },
+                ].map((opt) => (
+                  <button
+                    key={opt.label}
+                    role="menuitem"
+                    disabled={opt.disabled}
+                    className="flex w-full items-center justify-between px-3 py-1.5 hover:bg-[var(--surface-hover)] disabled:opacity-40 disabled:hover:bg-transparent"
+                    onClick={() => {
+                      opt.run();
+                      setZoomMenu(false);
+                    }}
+                  >
+                    <span>{opt.label}</span>
+                    {opt.hint && (
+                      <span className="text-[var(--text-dim)]">{opt.hint}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
         <button
-          className="h-8 min-w-16 rounded px-2 text-xs tabular-nums hover:bg-[var(--surface-hover)]"
-          onClick={resetView}
-          title="Reset view"
+          className={chip}
+          onClick={zoomToFit}
+          aria-label="Zoom to fit"
+          title="Zoom to fit (Shift+1)"
         >
-          {Math.round(zoom * 100)}%
+          <Maximize size={15} />
         </button>
-        <button className={chip} onClick={() => applyZoom(zoom * 1.2)} title="Zoom in">
+        <button
+          className={chip}
+          onClick={() => applyZoom(zoom * 1.2)}
+          aria-label="Zoom in"
+          title="Zoom in"
+        >
           <Plus size={16} />
         </button>
       </div>
+
+      {shortcuts && <ShortcutsModal onClose={() => setShortcuts(false)} />}
 
       {/* right-click "Add note here" menu */}
       {noteMenu && (
@@ -613,17 +947,6 @@ export function Canvas() {
         </>
       )}
 
-      {/* delete confirmation */}
-      {pendingDelete && (
-        <ConfirmModal
-          title={`Delete ${pendingDelete.length} ${
-            pendingDelete.length === 1 ? "image" : "images"
-          }?`}
-          message="This can't be undone."
-          onConfirm={confirmDelete}
-          onClose={() => setPendingDelete(null)}
-        />
-      )}
     </div>
   );
 }

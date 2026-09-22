@@ -16,7 +16,12 @@ vi.mock("../lib/repo", () => ({
     z: 0,
     createdAt: 0,
   })),
-  createItem: vi.fn(),
+  createItem: vi.fn(
+    async (boardId: string, partial: Record<string, unknown>) => ({
+      ...partial,
+      boardId,
+    }),
+  ),
   deleteBoard: vi.fn(async () => {}),
   deleteGroup: vi.fn(async () => {}),
   deleteItem: vi.fn(async () => {}),
@@ -25,7 +30,9 @@ vi.mock("../lib/repo", () => ({
   listItems: vi.fn(async () => []),
   loadOrCreateDefaultBoard: vi.fn(),
   reorderBoards: vi.fn(async () => {}),
+  restoreGroup: vi.fn(async () => {}),
   saveBoardView: vi.fn(async () => {}),
+  setItemsGroup: vi.fn(async () => {}),
   updateBoardBackground: vi.fn(async () => {}),
   updateBoardMeta: vi.fn(async () => {}),
   updateItem: vi.fn(async () => {}),
@@ -117,6 +124,9 @@ beforeEach(() => {
     notes: [],
     error: null,
   });
+  // The history stack lives in the store factory's closure, so setState above
+  // doesn't touch it — each test starts from an empty one.
+  useBoardStore.getState().clearHistory();
 });
 
 describe("z-ordering", () => {
@@ -235,5 +245,120 @@ describe("pruneEmptyGroups", () => {
     });
     await useBoardStore.getState().pruneEmptyGroups();
     expect(useBoardStore.getState().groups).toHaveLength(0);
+  });
+});
+
+describe("undo / redo", () => {
+  const ids = () =>
+    useBoardStore
+      .getState()
+      .items.map((i) => i.id)
+      .sort();
+
+  it("restores deleted items, and redo removes them again", async () => {
+    const store = () => useBoardStore.getState();
+    await store().removeItems(["a", "b"]);
+    expect(ids()).toEqual(["c"]);
+
+    await store().undo();
+    expect(ids()).toEqual(["a", "b", "c"]);
+
+    await store().redo();
+    expect(ids()).toEqual(["c"]);
+  });
+
+  it("restores the prior geometry of a move", async () => {
+    const store = () => useBoardStore.getState();
+    store().patchItems([{ id: "a", patch: { x: 500, y: 250 } }]);
+    const moved = store().items.find((i) => i.id === "a");
+    expect(moved?.x).toBe(500);
+
+    await store().undo();
+    const back = store().items.find((i) => i.id === "a");
+    expect(back?.x).toBe(0);
+    expect(back?.y).toBe(0);
+    // ...and only the patched fields; width was never part of the entry.
+    expect(back?.width).toBe(100);
+  });
+
+  it("exposes a label for the action that would be reversed", () => {
+    useBoardStore.getState().bringToFront(["a"]);
+    expect(useBoardStore.getState().undoLabel).toBe("Bring to front");
+    expect(useBoardStore.getState().redoLabel).toBeNull();
+  });
+
+  it("does not record a move that changed nothing", () => {
+    useBoardStore.getState().patchItems([{ id: "a", patch: { x: 0 } }]);
+    expect(useBoardStore.getState().undoLabel).toBeNull();
+  });
+
+  it("drops the redo branch once a new action is recorded", async () => {
+    const store = () => useBoardStore.getState();
+    store().patchItems([{ id: "a", patch: { x: 500 } }]);
+    await store().undo();
+    expect(store().redoLabel).not.toBeNull();
+
+    store().patchItems([{ id: "b", patch: { x: 10 } }]);
+    expect(store().redoLabel).toBeNull();
+  });
+
+  it("undoing a specific entry is a no-op once the stack has moved on", async () => {
+    const store = () => useBoardStore.getState();
+    await store().removeItems(["a"]);
+    const deleteEntry = store().undoId as string;
+
+    // Something else happens before the deferred "Undo" is clicked.
+    store().patchItems([{ id: "b", patch: { x: 999 } }]);
+
+    await store().undo(deleteEntry);
+    // The delete is NOT reversed, and the later move is left alone.
+    expect(ids()).toEqual(["b", "c"]);
+    expect(store().items.find((i) => i.id === "b")?.x).toBe(999);
+  });
+
+  it("re-groups items when an ungroup is undone", async () => {
+    const store = () => useBoardStore.getState();
+    useBoardStore.setState({
+      items: [item("a", 1, "g1"), item("b", 2, "g1"), item("c", 3)],
+      groups: [
+        {
+          id: "g1",
+          boardId: "b1",
+          title: "",
+          x: 0,
+          y: 0,
+          width: 0,
+          height: 0,
+          color: null,
+          z: 0,
+          createdAt: 0,
+        },
+      ],
+    });
+    store().clearHistory();
+
+    await store().ungroupItems(["a"]);
+    expect(store().items.every((i) => i.groupId === null)).toBe(true);
+    expect(store().groups).toHaveLength(0);
+
+    await store().undo();
+    expect(store().groups).toHaveLength(1);
+    expect(store().items.find((i) => i.id === "a")?.groupId).toBe("g1");
+    expect(store().items.find((i) => i.id === "b")?.groupId).toBe("g1");
+    expect(store().items.find((i) => i.id === "c")?.groupId).toBeNull();
+  });
+
+  it("restores a deleted note with the text it had at deletion", async () => {
+    const store = () => useBoardStore.getState();
+    useBoardStore.setState({ notes: [note("n1", 1)] });
+    store().clearHistory();
+    store().patchNoteText("n1", "written before deleting");
+
+    await store().removeNote("n1");
+    expect(store().notes).toHaveLength(0);
+
+    await store().undo();
+    expect(store().notes).toHaveLength(1);
+    expect(store().notes[0].text).toBe("written before deleting");
   });
 });

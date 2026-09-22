@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   Download,
+  Keyboard,
   Palette,
   RefreshCw,
   Settings,
@@ -13,6 +14,7 @@ import { PRESETS, THEME_TOKENS, type Theme } from "../lib/themes";
 import { exportBundle, importBundle } from "../lib/exportImport";
 import { useBoardStore } from "../store/boardStore";
 import { checkForUpdates } from "../lib/updater";
+import { ShortcutsModal } from "./ShortcutsModal";
 
 // Settings panel (top-right, ui-chrome). Theme presets + a custom color editor,
 // plus full-board export/import. Mostly themes the background and UI chrome.
@@ -42,6 +44,7 @@ export function SettingsPanel() {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<null | "export" | "import">(null);
   const [checking, setChecking] = useState(false);
+  const [shortcuts, setShortcuts] = useState(false);
 
   const doCheckUpdates = async () => {
     setChecking(true);
@@ -84,6 +87,7 @@ export function SettingsPanel() {
       <button
         className="grid h-10 w-10 place-items-center rounded-lg bg-[var(--surface)] text-[var(--text)] shadow-lg ring-1 ring-[var(--border)] backdrop-blur hover:bg-[var(--surface-hover)]"
         onClick={() => void addNote()}
+        aria-label="Add note"
         title="Add note"
       >
         <StickyNote size={16} />
@@ -91,6 +95,8 @@ export function SettingsPanel() {
       <button
         className="grid h-10 w-10 place-items-center rounded-lg bg-[var(--surface)] text-[var(--text)] shadow-lg ring-1 ring-[var(--border)] backdrop-blur hover:bg-[var(--surface-hover)]"
         onClick={() => setOpen((o) => !o)}
+        aria-label={open ? "Close settings" : "Settings"}
+        aria-expanded={open}
         title="Settings"
       >
         {open ? <X size={16} /> : <Settings size={16} />}
@@ -190,6 +196,13 @@ export function SettingsPanel() {
           <div className="mt-3 border-t border-[var(--border)] pt-3">
             <div className="mb-1.5 text-xs font-semibold">App</div>
             <button
+              onClick={() => setShortcuts(true)}
+              className="mb-1.5 flex w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--surface-hover)] px-2 py-1.5 text-xs hover:opacity-80"
+            >
+              <Keyboard size={14} />
+              Keyboard shortcuts
+            </button>
+            <button
               onClick={doCheckUpdates}
               disabled={checking}
               className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--surface-hover)] px-2 py-1.5 text-xs hover:opacity-80 disabled:opacity-40"
@@ -200,6 +213,8 @@ export function SettingsPanel() {
           </div>
         </div>
       )}
+
+      {shortcuts && <ShortcutsModal onClose={() => setShortcuts(false)} />}
     </div>
   );
 }

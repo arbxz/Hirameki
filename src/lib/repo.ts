@@ -410,6 +410,33 @@ export async function setItemsGroup(
   );
 }
 
+/**
+ * Re-insert a previously deleted group row verbatim, keeping its original id.
+ * Used by undo: restoring deleted items whose group_id points at a group that
+ * was pruned would otherwise violate the items→groups foreign key, so the group
+ * row has to come back before its members do.
+ */
+export async function restoreGroup(group: Group): Promise<void> {
+  const db = await getDb();
+  await db.execute(
+    `INSERT INTO groups (id, board_id, title, x, y, width, height, color, z, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+     ON CONFLICT(id) DO NOTHING`,
+    [
+      group.id,
+      group.boardId,
+      group.title,
+      group.x,
+      group.y,
+      group.width,
+      group.height,
+      group.color,
+      group.z,
+      group.createdAt,
+    ],
+  );
+}
+
 /** Disband a group: clear members' group_id, then delete the group row. */
 export async function deleteGroup(groupId: string): Promise<void> {
   const db = await getDb();

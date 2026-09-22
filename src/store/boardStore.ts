@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { v4 as uuid } from "uuid";
 import type { Board, Group, Item } from "../types/board";
 import {
   createBoard as repoCreateBoard,
@@ -12,7 +13,9 @@ import {
   listItems,
   loadOrCreateDefaultBoard,
   reorderBoards as repoReorderBoards,
+  restoreGroup as repoRestoreGroup,
   saveBoardView,
+  setItemsGroup as repoSetItemsGroup,
   updateBoardBackground as repoUpdateBoardBackground,
   updateBoardMeta as repoUpdateBoardMeta,
   updateItem as repoUpdateItem,
@@ -26,8 +29,30 @@ import {
   type NoteColorKey,
 } from "../lib/notes";
 import { getSetting, setSetting } from "../lib/settings";
+import { toast } from "./toastStore";
 
 const ACTIVE_BOARD_KEY = "board.activeId";
+
+/**
+ * One reversible user action. Both directions are closures over the data they
+ * need (prior geometry, deleted rows), so replaying never has to re-derive
+ * anything from current state — which may have moved on.
+ */
+interface HistoryEntry {
+  /** Identifies this exact entry, so a deferred "Undo" affordance (a toast
+   *  button clicked seconds later) can verify it's still the top of the stack
+   *  instead of silently reversing whatever the user did in the meantime. */
+  id: string;
+  /** Shown in the undo/redo tooltips, e.g. "Move 3 images". */
+  label: string;
+  undo: () => void | Promise<void>;
+  redo: () => void | Promise<void>;
+}
+
+const MAX_HISTORY = 100;
+
+const plural = (n: number, one: string, many = `${one}s`) =>
+  `${n} ${n === 1 ? one : many}`;
 
 // Debounce helper for write-back of high-frequency state (viewport, drags).
 // Exposes `flush()` to fire any pending call immediately (used on app close so
@@ -70,6 +95,22 @@ interface BoardState {
   notes: Note[];
   loading: boolean;
   error: string | null;
+
+  /** Label of the action Ctrl+Z would reverse, or null if there's nothing. */
+  undoLabel: string | null;
+  /** Id of that same action, for callers holding a deferred undo affordance. */
+  undoId: string | null;
+  /** Label of the action Ctrl+Shift+Z would replay, or null. */
+  redoLabel: string | null;
+  /**
+   * Reverse the most recent recorded action. Pass `expectedId` to make it a
+   * no-op unless that specific action is still the one on top.
+   */
+  undo: (expectedId?: string) => Promise<void>;
+  /** Replay the most recently undone action. */
+  redo: () => Promise<void>;
+  /** Drop the entire history (board switch, import, tests). */
+  clearHistory: () => void;
 
   /** Load all boards and open the last-active one (or the default). */
   init: () => Promise<void>;
@@ -116,8 +157,14 @@ interface BoardState {
   /** Patch one item in memory and persist immediately. */
   patchItem: (id: string, patch: ItemGeomPatch) => void;
 
-  /** Patch many items at once (group drag/resize, z-order) and persist each. */
-  patchItems: (updates: { id: string; patch: ItemGeomPatch }[]) => void;
+  /**
+   * Patch many items at once (group drag/resize, z-order) and persist each.
+   * Recorded as a single undo entry labelled `label`.
+   */
+  patchItems: (
+    updates: { id: string; patch: ItemGeomPatch }[],
+    label?: string,
+  ) => void;
 
   removeItem: (id: string) => Promise<void>;
   removeItems: (ids: string[]) => Promise<void>;
@@ -193,6 +240,75 @@ export const useBoardStore = create<BoardState>((set, get) => {
     for (const w of noteTextWriters.values()) w.flush();
   };
 
+  // ----- undo / redo -----
+  //
+  // A command stack of inverse closures. Mutations call `record(...)` with the
+  // data needed to reverse themselves; `applying` suppresses recording while an
+  // undo/redo is running, so the mutations an entry invokes don't push entries
+  // of their own (which would make undo un-undoable).
+  //
+  // Deliberately NOT recorded: note text. A textarea has its own native undo
+  // stack, and a global one replaying keystrokes would fight it — so Ctrl+Z
+  // inside a note edits text, and outside one it reverses canvas actions.
+  let undoStack: HistoryEntry[] = [];
+  let redoStack: HistoryEntry[] = [];
+  let applying = false;
+
+  const syncHistory = () =>
+    set({
+      undoLabel: undoStack[undoStack.length - 1]?.label ?? null,
+      undoId: undoStack[undoStack.length - 1]?.id ?? null,
+      redoLabel: redoStack[redoStack.length - 1]?.label ?? null,
+    });
+
+  /**
+   * Report a failed operation. Surfaces a dismissable toast and keeps the last
+   * message on `error` for anything still reading it. Every persistence call
+   * routes failures here — the store updates optimistically, so a silent write
+   * failure would leave the UI showing state the DB doesn't have.
+   */
+  const fail = (e: unknown, context?: string) => {
+    const message = context ? `${context}: ${String(e)}` : String(e);
+    set({ error: message });
+    toast.error(message);
+  };
+
+  const record = (entry: Omit<HistoryEntry, "id">) => {
+    if (applying) return;
+    undoStack.push({ ...entry, id: uuid() });
+    if (undoStack.length > MAX_HISTORY) undoStack.shift();
+    redoStack = []; // a fresh action invalidates the redo branch
+    syncHistory();
+  };
+
+  const dropHistory = () => {
+    undoStack = [];
+    redoStack = [];
+    syncHistory();
+  };
+
+  /**
+   * Run one direction of a history entry. If it throws, the board may be
+   * half-changed and every remaining entry's assumptions are suspect, so the
+   * whole stack is dropped rather than left to corrupt later replays.
+   */
+  const applyHistory = async (
+    entry: HistoryEntry,
+    direction: "undo" | "redo",
+  ): Promise<boolean> => {
+    applying = true;
+    try {
+      await (direction === "undo" ? entry.undo() : entry.redo());
+      return true;
+    } catch (e) {
+      dropHistory();
+      toast.error(`Couldn't ${direction} “${entry.label}”: ${String(e)}`);
+      return false;
+    } finally {
+      applying = false;
+    }
+  };
+
   // Load a board's groups + items + notes into state (init/switch/create).
   const openBoard = async (board: Board) => {
     const [items, groups, notes] = await Promise.all([
@@ -201,6 +317,10 @@ export const useBoardStore = create<BoardState>((set, get) => {
       listNotes(board.id),
     ]);
     set({ board, items, groups, notes, error: null });
+    // History entries close over rows belonging to the board that recorded
+    // them; replaying one against a different board would resurrect its
+    // contents here. Switching boards starts a fresh stack.
+    dropHistory();
     void setSetting(ACTIVE_BOARD_KEY, board.id);
   };
 
@@ -212,6 +332,37 @@ export const useBoardStore = create<BoardState>((set, get) => {
     notes: [],
     loading: true,
     error: null,
+    undoLabel: null,
+    undoId: null,
+    redoLabel: null,
+
+    async undo(expectedId) {
+      const entry = undoStack[undoStack.length - 1];
+      if (!entry) return;
+      // A deferred affordance names the entry it was offered for; if the stack
+      // has moved on since, doing nothing is safer than reversing the wrong
+      // action behind the user's back.
+      if (expectedId !== undefined && entry.id !== expectedId) return;
+      undoStack.pop();
+      if (await applyHistory(entry, "undo")) {
+        redoStack.push(entry);
+        syncHistory();
+      }
+    },
+
+    async redo() {
+      const entry = redoStack[redoStack.length - 1];
+      if (!entry) return;
+      redoStack.pop();
+      if (await applyHistory(entry, "redo")) {
+        undoStack.push(entry);
+        syncHistory();
+      }
+    },
+
+    clearHistory() {
+      dropHistory();
+    },
 
     async init() {
       if (initStarted) return;
@@ -245,7 +396,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
       try {
         await openBoard(target);
       } catch (e) {
-        set({ error: String(e) });
+        fail(e, "Couldn't open board");
       }
     },
 
@@ -258,7 +409,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
         await openBoard(board);
         return board;
       } catch (e) {
-        set({ error: String(e) });
+        fail(e, "Couldn't create board");
         return null;
       }
     },
@@ -279,15 +430,20 @@ export const useBoardStore = create<BoardState>((set, get) => {
     async deleteBoard(id) {
       const { boards, board } = get();
       if (boards.length <= 1) {
-        set({ error: "Can't delete the last board." });
+        fail("at least one board must remain", "Can't delete this board");
         return;
       }
       const remaining = boards.filter((b) => b.id !== id);
       set({ boards: remaining });
-      await repoDeleteBoard(id);
-      // If we deleted the active board, open a neighbour.
-      if (board?.id === id) {
-        await openBoard(remaining[0]);
+      try {
+        await repoDeleteBoard(id);
+        // If we deleted the active board, open a neighbour.
+        if (board?.id === id) {
+          await openBoard(remaining[0]);
+        }
+      } catch (e) {
+        set({ boards }); // put the tab back; the row is still there
+        fail(e, "Couldn't delete board");
       }
     },
 
@@ -320,7 +476,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
       try {
         await repoUpdateBoardBackground(boardId, source, fit);
       } catch (e) {
-        set({ error: String(e) });
+        fail(e, "Couldn't set background");
       }
     },
 
@@ -348,9 +504,27 @@ export const useBoardStore = create<BoardState>((set, get) => {
       try {
         const item = await repoCreateItem(board.id, partial);
         set({ items: [...get().items, item] });
+        // Undo only removes the DB row — the image file stays on disk so redo
+        // can re-reference it. (Deleting an item has never removed its file
+        // either; orphan cleanup is a separate concern.)
+        let snapshot = item;
+        record({
+          label: "Add image",
+          undo: async () => {
+            // Re-snapshot first: the image may have been moved or resized since
+            // it was added, and redo should restore it as it last looked.
+            snapshot = get().items.find((it) => it.id === item.id) ?? snapshot;
+            set({ items: get().items.filter((it) => it.id !== item.id) });
+            await repoDeleteItem(item.id);
+          },
+          redo: async () => {
+            const restored = await repoCreateItem(board.id, snapshot);
+            set({ items: [...get().items, restored] });
+          },
+        });
         return item;
       } catch (e) {
-        set({ error: String(e) });
+        fail(e, "Couldn't add image");
         return null;
       }
     },
@@ -362,28 +536,98 @@ export const useBoardStore = create<BoardState>((set, get) => {
       void repoUpdateItem(id, patch);
     },
 
-    patchItems(updates) {
-      const byId = new Map(updates.map((u) => [u.id, u.patch]));
-      set({
-        items: get().items.map((it) => {
-          const p = byId.get(it.id);
-          return p ? { ...it, ...p } : it;
-        }),
+    patchItems(updates, label = "Move") {
+      const before = get().items;
+      // Capture only the fields this patch touches, so undo restores exactly
+      // what changed and nothing else.
+      const inverse = updates.flatMap((u) => {
+        const it = before.find((i) => i.id === u.id);
+        if (!it) return [];
+        const patch: ItemGeomPatch = {};
+        for (const key of Object.keys(u.patch) as (keyof ItemGeomPatch)[]) {
+          (patch as Record<string, unknown>)[key] = it[key];
+        }
+        return [{ id: u.id, patch }];
       });
-      for (const u of updates) void repoUpdateItem(u.id, u.patch);
+
+      const write = (list: { id: string; patch: ItemGeomPatch }[]) => {
+        const byId = new Map(list.map((u) => [u.id, u.patch]));
+        set({
+          items: get().items.map((it) => {
+            const p = byId.get(it.id);
+            return p ? { ...it, ...p } : it;
+          }),
+        });
+        for (const u of list) {
+          void repoUpdateItem(u.id, u.patch).catch((e) =>
+            fail(e, "Couldn't save change"),
+          );
+        }
+      };
+
+      write(updates);
+      // A drag that ends where it started still commits; don't record an entry
+      // whose undo would visibly do nothing.
+      const changed = inverse.some((inv) => {
+        const applied = updates.find((u) => u.id === inv.id)?.patch ?? {};
+        return (Object.keys(inv.patch) as (keyof ItemGeomPatch)[]).some(
+          (k) => inv.patch[k] !== applied[k],
+        );
+      });
+      if (changed) {
+        record({
+          label,
+          undo: () => write(inverse),
+          redo: () => write(updates),
+        });
+      }
     },
 
     async removeItem(id) {
-      set({ items: get().items.filter((it) => it.id !== id) });
-      await repoDeleteItem(id);
+      await get().removeItems([id]);
     },
 
     async removeItems(ids) {
-      const set_ = new Set(ids);
-      set({ items: get().items.filter((it) => !set_.has(it.id)) });
-      await Promise.all(ids.map((id) => repoDeleteItem(id)));
-      // Drop any group that no longer has members.
-      await get().pruneEmptyGroups();
+      const idSet = new Set(ids);
+      const removed = get().items.filter((it) => idSet.has(it.id));
+      if (removed.length === 0) return;
+      const groupsBefore = get().groups;
+
+      const drop = async () => {
+        set({ items: get().items.filter((it) => !idSet.has(it.id)) });
+        await Promise.all(ids.map((id) => repoDeleteItem(id)));
+        // Drop any group that no longer has members.
+        await get().pruneEmptyGroups();
+      };
+
+      try {
+        await drop();
+      } catch (e) {
+        fail(e, "Couldn't delete");
+        return;
+      }
+
+      // Deleting every member of a group prunes the group row; restoring the
+      // items would then violate the items→groups FK, so the pruned groups have
+      // to be put back first.
+      const prunedGroups = groupsBefore.filter(
+        (g) => !get().groups.some((live) => live.id === g.id),
+      );
+
+      record({
+        label: `Delete ${plural(removed.length, "image")}`,
+        undo: async () => {
+          for (const g of prunedGroups) await repoRestoreGroup(g);
+          const restored = await Promise.all(
+            removed.map((it) => repoCreateItem(it.boardId, it)),
+          );
+          set({
+            groups: [...get().groups, ...prunedGroups],
+            items: [...get().items, ...restored],
+          });
+        },
+        redo: drop,
+      });
     },
 
     async groupItems(ids) {
@@ -403,15 +647,46 @@ export const useBoardStore = create<BoardState>((set, get) => {
           height: maxY - minY,
         });
         const idSet = new Set(ids);
-        set({
-          groups: [...get().groups, group],
-          items: get().items.map((it) =>
-            idSet.has(it.id) ? { ...it, groupId: group.id } : it,
-          ),
+        // Members may already belong to another group; undo has to put each one
+        // back where it came from, not just clear it.
+        const priorGroupIds = new Map(members.map((m) => [m.id, m.groupId]));
+
+        const attach = () =>
+          set({
+            groups: [...get().groups, group],
+            items: get().items.map((it) =>
+              idSet.has(it.id) ? { ...it, groupId: group.id } : it,
+            ),
+          });
+
+        attach();
+        record({
+          label: `Group ${plural(ids.length, "image")}`,
+          undo: async () => {
+            set({
+              groups: get().groups.filter((g) => g.id !== group.id),
+              items: get().items.map((it) =>
+                idSet.has(it.id)
+                  ? { ...it, groupId: priorGroupIds.get(it.id) ?? null }
+                  : it,
+              ),
+            });
+            await repoDeleteGroup(group.id);
+            // repoDeleteGroup nulls every member's group_id, so any that were
+            // previously in another group need re-stamping.
+            for (const [itemId, gid] of priorGroupIds) {
+              if (gid) await repoSetItemsGroup([itemId], gid);
+            }
+          },
+          redo: async () => {
+            await repoRestoreGroup(group);
+            await repoSetItemsGroup(ids, group.id);
+            attach();
+          },
         });
         return group.id;
       } catch (e) {
-        set({ error: String(e) });
+        fail(e, "Couldn't group");
         return null;
       }
     },
@@ -424,15 +699,60 @@ export const useBoardStore = create<BoardState>((set, get) => {
           .map((it) => it.groupId as string),
       );
       if (groupIds.size === 0) return;
-      set({
-        groups: get().groups.filter((g) => !groupIds.has(g.id)),
-        items: items.map((it) =>
-          it.groupId && groupIds.has(it.groupId)
-            ? { ...it, groupId: null }
-            : it,
-        ),
+
+      // Snapshot the disbanded group rows and who belonged to which, so undo
+      // can rebuild them exactly.
+      const disbanded = get().groups.filter((g) => groupIds.has(g.id));
+      const membersByGroup = new Map<string, string[]>();
+      for (const it of items) {
+        if (it.groupId && groupIds.has(it.groupId)) {
+          const list = membersByGroup.get(it.groupId) ?? [];
+          list.push(it.id);
+          membersByGroup.set(it.groupId, list);
+        }
+      }
+
+      const detach = async () => {
+        set({
+          groups: get().groups.filter((g) => !groupIds.has(g.id)),
+          items: get().items.map((it) =>
+            it.groupId && groupIds.has(it.groupId)
+              ? { ...it, groupId: null }
+              : it,
+          ),
+        });
+        await Promise.all([...groupIds].map((gid) => repoDeleteGroup(gid)));
+      };
+
+      try {
+        await detach();
+      } catch (e) {
+        fail(e, "Couldn't ungroup");
+        return;
+      }
+
+      record({
+        label: `Ungroup ${plural(disbanded.length, "group")}`,
+        undo: async () => {
+          for (const g of disbanded) {
+            await repoRestoreGroup(g);
+            await repoSetItemsGroup(membersByGroup.get(g.id) ?? [], g.id);
+          }
+          const groupOf = new Map<string, string>();
+          for (const [gid, memberIds] of membersByGroup) {
+            for (const id of memberIds) groupOf.set(id, gid);
+          }
+          set({
+            groups: [...get().groups, ...disbanded],
+            items: get().items.map((it) =>
+              groupOf.has(it.id)
+                ? { ...it, groupId: groupOf.get(it.id) as string }
+                : it,
+            ),
+          });
+        },
+        redo: detach,
       });
-      await Promise.all([...groupIds].map((gid) => repoDeleteGroup(gid)));
     },
 
     expandSelection(ids) {
@@ -473,7 +793,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
         id: it.id,
         patch: { z: maxZ + 1 + i },
       }));
-      get().patchItems(updates);
+      get().patchItems(updates, "Bring to front");
     },
 
     sendToBack(ids) {
@@ -487,7 +807,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
         id: it.id,
         patch: { z: minZ - lowered.length + i },
       }));
-      get().patchItems(updates);
+      get().patchItems(updates, "Send to back");
     },
 
     // ----- notes -----
@@ -511,9 +831,25 @@ export const useBoardStore = create<BoardState>((set, get) => {
           z: maxZ + 1,
         });
         set({ notes: [...get().notes, note] });
+        // Re-snapshot on undo rather than closing over the note as created: by
+        // then it may have been typed into, moved or restyled, and redo should
+        // bring back what was actually on screen.
+        let snapshot = note;
+        record({
+          label: "Add note",
+          undo: async () => {
+            snapshot = get().notes.find((n) => n.id === note.id) ?? snapshot;
+            set({ notes: get().notes.filter((n) => n.id !== note.id) });
+            await repoDeleteNote(note.id);
+          },
+          redo: async () => {
+            const restored = await repoCreateNote(board.id, snapshot);
+            set({ notes: [...get().notes, restored] });
+          },
+        });
         return note;
       } catch (e) {
-        set({ error: String(e) });
+        fail(e, "Couldn't add note");
         return null;
       }
     },
@@ -526,23 +862,91 @@ export const useBoardStore = create<BoardState>((set, get) => {
     },
 
     commitNoteGeom(id, geom) {
-      set({
-        notes: get().notes.map((n) => (n.id === id ? { ...n, ...geom } : n)),
-      });
-      void repoUpdateNote(id, geom);
+      const before = get().notes.find((n) => n.id === id);
+      if (!before) return;
+      const prior = {
+        x: before.x,
+        y: before.y,
+        width: before.width,
+        height: before.height,
+      };
+      const write = (g: typeof prior) => {
+        set({
+          notes: get().notes.map((n) => (n.id === id ? { ...n, ...g } : n)),
+        });
+        void repoUpdateNote(id, g).catch((e) =>
+          fail(e, "Couldn't save note position"),
+        );
+      };
+      write(geom);
+      // A click on the header starts and ends a gesture without moving the
+      // note; don't put a do-nothing entry on the stack for it.
+      const moved = (Object.keys(prior) as (keyof typeof prior)[]).some(
+        (k) => prior[k] !== geom[k],
+      );
+      if (moved) {
+        record({
+          label: "Move note",
+          undo: () => write(prior),
+          redo: () => write(geom),
+        });
+      }
     },
 
     setNoteStyle(id, patch) {
-      set({
-        notes: get().notes.map((n) => (n.id === id ? { ...n, ...patch } : n)),
+      const before = get().notes.find((n) => n.id === id);
+      if (!before) return;
+      const prior: typeof patch = {};
+      for (const key of Object.keys(patch) as (keyof typeof patch)[]) {
+        (prior as Record<string, unknown>)[key] = before[key];
+      }
+      const write = (p: typeof patch) => {
+        set({
+          notes: get().notes.map((n) => (n.id === id ? { ...n, ...p } : n)),
+        });
+        void repoUpdateNote(id, p).catch((e) =>
+          fail(e, "Couldn't save note style"),
+        );
+      };
+      write(patch);
+      record({
+        label: "Restyle note",
+        undo: () => write(prior),
+        redo: () => write(patch),
       });
-      void repoUpdateNote(id, patch);
     },
 
     async removeNote(id) {
-      noteTextWriters.delete(id); // drop any pending text write for this note
-      set({ notes: get().notes.filter((n) => n.id !== id) });
-      await repoDeleteNote(id);
+      // `removed` is the live in-memory note, so it already carries the latest
+      // keystrokes even if the debounced write hasn't fired — undo restores
+      // them. The pending writer is dropped rather than flushed: it would only
+      // race an UPDATE against the DELETE below.
+      const removed = get().notes.find((n) => n.id === id);
+      if (!removed) return;
+      noteTextWriters.delete(id);
+
+      const drop = async () => {
+        set({ notes: get().notes.filter((n) => n.id !== id) });
+        await repoDeleteNote(id);
+      };
+
+      try {
+        await drop();
+      } catch (e) {
+        fail(e, "Couldn't delete note");
+        return;
+      }
+
+      const board = get().board;
+      record({
+        label: "Delete note",
+        undo: async () => {
+          if (!board) return;
+          const restored = await repoCreateNote(board.id, removed);
+          set({ notes: [...get().notes, restored] });
+        },
+        redo: drop,
+      });
     },
 
     bringNoteToFront(id) {
@@ -563,6 +967,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
 
     setError(error) {
       set({ error });
+      if (error) toast.error(error);
     },
   };
 });

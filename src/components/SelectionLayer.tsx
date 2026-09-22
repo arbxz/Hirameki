@@ -35,6 +35,7 @@ export function SelectionLayer({
   selectedIds,
   setSelectedIds,
   panMode,
+  freeRatio,
   viewport,
 }: {
   worldEl: HTMLElement | null;
@@ -42,6 +43,8 @@ export function SelectionLayer({
   selectedIds: string[];
   setSelectedIds: (ids: string[]) => void;
   panMode: boolean;
+  /** Shift is held: allow a resize to distort the image. */
+  freeRatio: boolean;
   /** Scroll/zoom — changes re-anchor the control box to its target. */
   viewport: { x: number; y: number; zoom: number };
 }) {
@@ -61,6 +64,19 @@ export function SelectionLayer({
       .map((id) => worldEl.querySelector<HTMLElement>(`[data-item-id="${id}"]`))
       .filter((el): el is HTMLElement => el !== null);
   }, [worldEl, selectedIds, items]);
+
+  // Every other item on the board is a snap reference. Deliberately keyed on
+  // items.length, not items: the node list only changes when items are added or
+  // removed, while `items` changes on every geometry commit — rebuilding this
+  // array on each drag would hand Moveable a new prop identity every time.
+  const elementGuidelines = useMemo(() => {
+    if (!worldEl) return [];
+    const selected = new Set(selectedIds);
+    return [...worldEl.querySelectorAll<HTMLElement>("[data-item-id]")].filter(
+      (el) => !selected.has(el.getAttribute("data-item-id") ?? ""),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [worldEl, selectedIds, items.length]);
 
   // Keep moveable's box aligned when items change, or when the viewport
   // pans/zooms (otherwise the control box stays fixed in screen space while the
@@ -194,11 +210,39 @@ export function SelectionLayer({
         target={targets}
         draggable={!panMode}
         resizable={!panMode}
+        // Images render with object-fit: cover, so an off-ratio resize doesn't
+        // stretch the picture — it silently crops it, with no way to tell what
+        // was lost. Lock the ratio by default; Shift frees it deliberately.
+        keepRatio={!freeRatio}
         rotatable={!panMode}
         origin={false}
         throttleDrag={0}
         throttleResize={0}
-        throttleRotate={0}
+        // Shift-snap rotation to 15° increments; free otherwise.
+        throttleRotate={freeRatio ? 15 : 0}
+        // Align to neighbouring images' edges and centres. This is what makes a
+        // hand-arranged board read as deliberate rather than approximate.
+        snappable
+        elementGuidelines={elementGuidelines}
+        snapDirections={{
+          top: true,
+          left: true,
+          bottom: true,
+          right: true,
+          center: true,
+          middle: true,
+        }}
+        elementSnapDirections={{
+          top: true,
+          left: true,
+          bottom: true,
+          right: true,
+          center: true,
+          middle: true,
+        }}
+        snapThreshold={6}
+        snapGap={false}
+        isDisplaySnapDigit={false}
         onDragStart={snapshot}
         onDrag={onDrag}
         onDragEnd={commit}
