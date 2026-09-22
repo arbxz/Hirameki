@@ -30,13 +30,6 @@ base64 = "0.22"
 log = "0.4"
 tauri-plugin-log = "2"
 
-# Reaching ICoreWebView2Settings5 to turn off WebView2's built-in pinch zoom;
-# see `disable_webview_pinch_zoom` in lib.rs. Versions must match the ones Tauri
-# already resolves, or the COM interface types won't line up.
-[target.'cfg(windows)'.dependencies]
-webview2-com = "0.38"
-windows = { version = "0.61", features = ["Win32_Foundation"] }
-
 # Self-updater (desktop only — stores handle updates on mobile).
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"

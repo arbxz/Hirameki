@@ -1761,8 +1761,6 @@ dependencies = [
  "tauri-plugin-sql",
  "tauri-plugin-updater",
  "uuid",
- "webview2-com",
- "windows",
 ]
 
 [[package]]
