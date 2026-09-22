@@ -115,6 +115,7 @@ export function SettingsPanel() {
               <button
                 key={presetName}
                 onClick={() => selectPreset(presetName)}
+                aria-pressed={name === presetName}
                 className={`flex flex-col items-center gap-1 rounded-lg p-2 ring-1 ${
                   name === presetName
                     ? "ring-[var(--accent)]"
@@ -158,6 +159,7 @@ export function SettingsPanel() {
                     <input
                       type="color"
                       value={hexForPicker(custom[token])}
+                      aria-label={`${TOKEN_LABELS[token]} colour picker`}
                       onChange={(e) => setCustomToken(token, e.target.value)}
                       className="h-6 w-6 cursor-pointer rounded border-0 bg-transparent p-0"
                     />

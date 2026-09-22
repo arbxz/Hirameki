@@ -126,6 +126,12 @@ export function BoardTabs() {
                 <button
                   className="flex w-full items-center gap-2 px-3 py-1.5 text-red-400 hover:bg-red-500/20 disabled:opacity-40"
                   disabled={boards.length <= 1}
+                  // Say why it's greyed out instead of leaving a dead control.
+                  title={
+                    boards.length <= 1
+                      ? "The only board can't be deleted"
+                      : undefined
+                  }
                   onClick={() => {
                     setMenu(null);
                     setPendingDelete(b);
