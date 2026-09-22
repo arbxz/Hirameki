@@ -338,6 +338,25 @@ export function Canvas() {
         deleteItems(sel);
       } else if (e.key === "Escape") {
         setSelectedIds([]);
+      } else if (mod && (e.key === "a" || e.key === "A")) {
+        e.preventDefault();
+        setSelectedIds(useBoardStore.getState().items.map((it) => it.id));
+      } else if (sel.length && !mod && e.key.startsWith("Arrow")) {
+        // Keyboard alternative to dragging (WCAG 2.2 dragging movements), and
+        // the precise way to line things up. World units, like the snap grid:
+        // 1px, or 10px with Shift. A held key or a quick run of presses folds
+        // into one undo entry through the merge key.
+        e.preventDefault();
+        const step = e.shiftKey ? 10 : 1;
+        const dx = e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
+        const dy = e.key === "ArrowUp" ? -step : e.key === "ArrowDown" ? step : 0;
+        const { items: all, patchItems } = useBoardStore.getState();
+        const selSet = new Set(sel);
+        const updates = all
+          .filter((it) => selSet.has(it.id))
+          .map((it) => ({ id: it.id, patch: { x: it.x + dx, y: it.y + dy } }));
+        const label = `Nudge ${updates.length === 1 ? "image" : `${updates.length} images`}`;
+        patchItems(updates, label, `nudge:${[...sel].sort().join(",")}`);
       } else if (mod && (e.key === "g" || e.key === "G")) {
         // Ctrl/Cmd+G groups; add Shift to ungroup.
         e.preventDefault();

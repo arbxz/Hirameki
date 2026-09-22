@@ -47,9 +47,15 @@ interface HistoryEntry {
   label: string;
   undo: () => void | Promise<void>;
   redo: () => void | Promise<void>;
+  /** Entries sharing a key, recorded within MERGE_WINDOW of each other, fold
+   *  into one: a burst of arrow-key nudges undoes as a single move. */
+  mergeKey?: string;
+  /** When this entry was last recorded or merged into (ms). */
+  at: number;
 }
 
 const MAX_HISTORY = 100;
+const MERGE_WINDOW = 1000;
 
 const plural = (n: number, one: string, many = `${one}s`) =>
   `${n} ${n === 1 ? one : many}`;
@@ -164,6 +170,10 @@ interface BoardState {
   patchItems: (
     updates: { id: string; patch: ItemGeomPatch }[],
     label?: string,
+    /** Fold into the previous entry if it has the same key and is recent
+     *  (see HistoryEntry.mergeKey). Patches hold absolute values, so the
+     *  merged entry keeps the first undo and takes the latest redo. */
+    mergeKey?: string,
   ) => void;
 
   removeItem: (id: string) => Promise<void>;
@@ -273,9 +283,22 @@ export const useBoardStore = create<BoardState>((set, get) => {
     toast.error(message);
   };
 
-  const record = (entry: Omit<HistoryEntry, "id">) => {
+  const record = (entry: Omit<HistoryEntry, "id" | "at">) => {
     if (applying) return;
-    undoStack.push({ ...entry, id: uuid() });
+    const now = Date.now();
+    const top = undoStack[undoStack.length - 1];
+    if (
+      entry.mergeKey &&
+      top?.mergeKey === entry.mergeKey &&
+      now - top.at < MERGE_WINDOW &&
+      redoStack.length === 0
+    ) {
+      // Keep top.undo (the state before the whole burst); take the new redo.
+      top.redo = entry.redo;
+      top.at = now;
+      return;
+    }
+    undoStack.push({ ...entry, id: uuid(), at: now });
     if (undoStack.length > MAX_HISTORY) undoStack.shift();
     redoStack = []; // a fresh action invalidates the redo branch
     syncHistory();
@@ -536,7 +559,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
       void repoUpdateItem(id, patch);
     },
 
-    patchItems(updates, label = "Move") {
+    patchItems(updates, label = "Move", mergeKey) {
       const before = get().items;
       // Capture only the fields this patch touches, so undo restores exactly
       // what changed and nothing else.
@@ -579,6 +602,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
           label,
           undo: () => write(inverse),
           redo: () => write(updates),
+          mergeKey,
         });
       }
     },

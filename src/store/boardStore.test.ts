@@ -287,6 +287,47 @@ describe("undo / redo", () => {
     expect(useBoardStore.getState().redoLabel).toBeNull();
   });
 
+  it("folds a burst of same-key patches into one undo entry", async () => {
+    const store = () => useBoardStore.getState();
+    for (let i = 1; i <= 5; i++) {
+      store().patchItems([{ id: "a", patch: { x: i } }], "Nudge image", "nudge:a");
+    }
+    expect(store().items.find((i) => i.id === "a")?.x).toBe(5);
+
+    await store().undo();
+    // One undo goes all the way back to before the first nudge...
+    expect(store().items.find((i) => i.id === "a")?.x).toBe(0);
+    expect(store().undoLabel).toBeNull();
+    // ...and one redo replays to where the burst ended.
+    await store().redo();
+    expect(store().items.find((i) => i.id === "a")?.x).toBe(5);
+  });
+
+  it("starts a new entry once the merge window has passed", async () => {
+    vi.useFakeTimers();
+    try {
+      const store = () => useBoardStore.getState();
+      store().patchItems([{ id: "a", patch: { x: 1 } }], "Nudge image", "nudge:a");
+      vi.advanceTimersByTime(1500);
+      store().patchItems([{ id: "a", patch: { x: 2 } }], "Nudge image", "nudge:a");
+
+      await store().undo();
+      expect(store().items.find((i) => i.id === "a")?.x).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("never merges patches with different keys", async () => {
+    const store = () => useBoardStore.getState();
+    store().patchItems([{ id: "a", patch: { x: 1 } }], "Nudge image", "nudge:a");
+    store().patchItems([{ id: "b", patch: { x: 1 } }], "Nudge image", "nudge:b");
+
+    await store().undo();
+    expect(store().items.find((i) => i.id === "a")?.x).toBe(1);
+    expect(store().items.find((i) => i.id === "b")?.x).toBe(0);
+  });
+
   it("does not record a move that changed nothing", () => {
     useBoardStore.getState().patchItems([{ id: "a", patch: { x: 0 } }]);
     expect(useBoardStore.getState().undoLabel).toBeNull();
