@@ -28,6 +28,7 @@ import { SelectionLayer } from "./SelectionLayer";
 import { BoardBackground } from "./BoardBackground";
 import { BoardTabs } from "./BoardTabs";
 import { ShortcutsModal } from "./ShortcutsModal";
+import { useMenuKeyboard } from "./useMenuKeyboard";
 import { boundsOf, fitView, type Box } from "../lib/geometry";
 
 // Phase 4: items can be selected (click / shift-click / marquee), then dragged,
@@ -148,6 +149,8 @@ export function Canvas() {
   // Shift frees the aspect-ratio lock while resizing (see SelectionLayer).
   const [shiftHeld, setShiftHeld] = useState(false);
   const [zoomMenu, setZoomMenu] = useState(false);
+  const zoomMenuRef = useRef<HTMLDivElement>(null);
+  useMenuKeyboard(zoomMenuRef, zoomMenu, () => setZoomMenu(false));
   const [middlePanning, setMiddlePanning] = useState(false);
   const [shortcuts, setShortcuts] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -862,7 +865,9 @@ export function Canvas() {
             <>
               <div className="fixed inset-0 z-40" onPointerDown={() => setZoomMenu(false)} />
               <div
+                ref={zoomMenuRef}
                 role="menu"
+                aria-label="Zoom options"
                 className="absolute bottom-10 right-0 z-50 w-52 overflow-hidden rounded-lg bg-[var(--surface-solid)] py-1 text-xs shadow-2xl ring-1 ring-[var(--border)]"
               >
                 {[
@@ -881,7 +886,7 @@ export function Canvas() {
                     key={opt.label}
                     role="menuitem"
                     disabled={opt.disabled}
-                    className="flex w-full items-center justify-between px-3 py-1.5 hover:bg-[var(--surface-hover)] disabled:opacity-40 disabled:hover:bg-transparent"
+                    className="flex w-full items-center justify-between px-3 py-1.5 hover:bg-[var(--surface-hover)] focus-visible:bg-[var(--surface-hover)] disabled:opacity-40 disabled:hover:bg-transparent"
                     onClick={() => {
                       opt.run();
                       setZoomMenu(false);

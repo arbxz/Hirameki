@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Download,
   Keyboard,
@@ -47,6 +47,21 @@ export function SettingsPanel() {
   const [checking, setChecking] = useState(false);
   const [shortcuts, setShortcuts] = useState(false);
   const [confirmImport, setConfirmImport] = useState(false);
+  const toggleRef = useRef<HTMLButtonElement>(null);
+
+  // Escape closes the panel and hands focus back to its toggle. Skipped while
+  // a dialog is up: that Escape belongs to the dialog.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (document.querySelector('[aria-modal="true"]')) return;
+      setOpen(false);
+      toggleRef.current?.focus();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
 
   const doCheckUpdates = async () => {
     setChecking(true);
@@ -95,6 +110,7 @@ export function SettingsPanel() {
         <StickyNote size={16} />
       </button>
       <button
+        ref={toggleRef}
         className="grid h-10 w-10 place-items-center rounded-lg bg-[var(--surface)] text-[var(--text)] shadow-lg ring-1 ring-[var(--border)] backdrop-blur hover:bg-[var(--surface-hover)]"
         onClick={() => setOpen((o) => !o)}
         aria-label={open ? "Close settings" : "Settings"}
