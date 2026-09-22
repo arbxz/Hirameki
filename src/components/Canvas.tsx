@@ -112,7 +112,7 @@ async function withIngestFeedback(
 /** Inline keycap for the empty-state hints. */
 function Kbd({ children }: { children: React.ReactNode }) {
   return (
-    <span className="mx-0.5 rounded border border-[var(--border)] bg-[var(--surface)] px-1 py-px font-medium text-[var(--text)]">
+    <span className="ui-mono mx-0.5 rounded-[3px] border border-[var(--border)] bg-[var(--surface)] px-1 py-px text-[var(--text)]">
       {children}
     </span>
   );
@@ -763,7 +763,7 @@ export function Canvas() {
           intercepts a drop, and hidden while the drop overlay is showing. */}
       {!loading && items.length === 0 && notes.length === 0 && !dragOver && (
         <div className="pointer-events-none absolute inset-0 grid place-items-center">
-          <div className="flex flex-col items-center gap-3 text-center">
+          <div className="chrome flex flex-col items-center gap-3 px-8 py-7 text-center">
             <ImagePlus
               size={40}
               className="text-[var(--text-dim)] opacity-40"
@@ -793,7 +793,7 @@ export function Canvas() {
           className="pointer-events-none absolute inset-3 z-10 grid place-items-center rounded-2xl border-2 border-dashed bg-[var(--accent)]/10"
           style={{ borderColor: "var(--accent)" }}
         >
-          <span className="rounded-lg bg-[var(--surface-solid)] px-4 py-2 text-sm text-[var(--text)]">
+          <span className="chrome-solid px-4 py-2 text-sm text-[var(--text)]">
             Drop images or image links
           </span>
         </div>
@@ -804,13 +804,13 @@ export function Canvas() {
         {/* board switcher */}
         <BoardTabs />
         <button
-          className="flex h-10 items-center gap-1.5 rounded-lg bg-[var(--surface)] px-3 text-xs text-[var(--text)] shadow-lg ring-1 ring-[var(--border)] backdrop-blur hover:bg-[var(--surface-hover)]"
+          className="chrome flex h-10 items-center gap-1.5 px-3 text-xs text-[var(--text)] hover:bg-[var(--surface-hover)]"
           onClick={() => fileInputRef.current?.click()}
         >
           <ImagePlus size={14} />
           Upload images
         </button>
-        <div className="flex h-10 items-center gap-1 rounded-lg bg-[var(--surface)] px-1 text-[var(--text)] shadow-lg ring-1 ring-[var(--border)] backdrop-blur">
+        <div className="flex h-10 items-center gap-1 rounded-[3px] bg-[var(--surface)] px-1 text-[var(--text)] shadow-lg ring-1 ring-[var(--border)] backdrop-blur">
           <button
             className={`${chip} disabled:opacity-30 disabled:hover:bg-transparent`}
             onClick={() => void undo()}
@@ -831,7 +831,7 @@ export function Canvas() {
           </button>
         </div>
         {selectedIds.length > 0 && (
-          <div className="flex h-10 items-center gap-1 rounded-lg bg-[var(--surface)] px-1 text-[var(--text)] shadow-lg ring-1 ring-[var(--border)] backdrop-blur">
+          <div className="flex h-10 items-center gap-1 rounded-[3px] bg-[var(--surface)] px-1 text-[var(--text)] shadow-lg ring-1 ring-[var(--border)] backdrop-blur">
             <button
               className={chip}
               onClick={() => bringToFront(selectedIds)}
@@ -878,7 +878,7 @@ export function Canvas() {
             </button>
           </div>
         )}
-        <span className="flex h-10 select-none items-center px-1 text-xs text-[var(--text-dim)]">
+        <span className="chrome ui-mono flex h-10 select-none items-center px-2.5 text-[11px] text-[var(--text-dim)]">
           {loading
             ? "loading…"
             : `${items.length} items${
@@ -896,7 +896,7 @@ export function Canvas() {
       </div>
 
       {/* zoom controls */}
-      <div className="ui-chrome absolute bottom-4 right-4 flex items-center gap-1 rounded-lg bg-[var(--surface)] p-1 text-[var(--text)] shadow-lg ring-1 ring-[var(--border)] backdrop-blur">
+      <div className="chrome ui-chrome absolute bottom-4 right-4 flex items-center gap-1 p-1 text-[var(--text)]">
         <button
           className={chip}
           onClick={() => applyZoom(zoom / 1.2)}
@@ -907,7 +907,7 @@ export function Canvas() {
         </button>
         <div className="relative">
           <button
-            className="h-8 min-w-16 rounded px-2 text-xs tabular-nums hover:bg-[var(--surface-hover)]"
+            className="ui-mono h-8 min-w-16 rounded-[3px] px-2 text-xs tabular-nums hover:bg-[var(--surface-hover)]"
             onClick={() => setZoomMenu((o) => !o)}
             aria-haspopup="menu"
             aria-expanded={zoomMenu}
@@ -923,7 +923,7 @@ export function Canvas() {
                 ref={zoomMenuRef}
                 role="menu"
                 aria-label="Zoom options"
-                className="absolute bottom-10 right-0 z-50 w-52 overflow-hidden rounded-lg bg-[var(--surface-solid)] py-1 text-xs shadow-2xl ring-1 ring-[var(--border)]"
+                className="chrome-solid absolute bottom-10 right-0 z-50 w-52 overflow-hidden py-1 text-xs"
               >
                 {[
                   { label: "Zoom to fit", hint: "Shift+1", run: zoomToFit },
@@ -949,7 +949,7 @@ export function Canvas() {
                   >
                     <span>{opt.label}</span>
                     {opt.hint && (
-                      <span className="text-[var(--text-dim)]">{opt.hint}</span>
+                      <span className="ui-mono text-[var(--text-dim)]">{opt.hint}</span>
                     )}
                   </button>
                 ))}
@@ -990,7 +990,7 @@ export function Canvas() {
             }}
           />
           <div
-            className="ui-chrome fixed z-50 overflow-hidden rounded-lg bg-[var(--surface-solid)] py-1 text-xs text-[var(--text)] shadow-2xl ring-1 ring-[var(--border)]"
+            className="chrome-solid ui-chrome fixed z-50 overflow-hidden py-1 text-xs text-[var(--text)]"
             style={{ left: noteMenu.screenX, top: noteMenu.screenY }}
           >
             <button

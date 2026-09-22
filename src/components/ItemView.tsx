@@ -44,7 +44,7 @@ export function ItemView({
   return (
     <div
       data-item-id={item.id}
-      className={`board-item absolute left-0 top-0 overflow-hidden rounded-lg shadow-lg ${
+      className={`board-item absolute left-0 top-0 overflow-hidden rounded-[3px] shadow-lg ${
         selected
           ? "ring-2"
           : item.groupId

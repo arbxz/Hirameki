@@ -68,7 +68,7 @@ export function BoardModal({
     <Modal title={title} onClose={onCancel}>
       <label
         htmlFor={nameId}
-        className="mb-1 block text-[11px] text-[var(--text-dim)]"
+        className="ui-label mb-1 block"
       >
         Name
       </label>
@@ -81,12 +81,12 @@ export function BoardModal({
           if (e.key === "Enter") submit();
         }}
         placeholder="Board name"
-        className="mb-4 w-full rounded-lg bg-[var(--surface)] px-2.5 py-1.5 text-sm text-[var(--text)] outline-none ring-1 ring-[var(--border)] focus:ring-[var(--accent)]"
+        className="mb-4 w-full rounded-[3px] bg-[var(--surface)] px-2.5 py-1.5 text-sm text-[var(--text)] outline-none ring-1 ring-[var(--border)] focus:ring-[var(--accent)]"
       />
 
       <div
         id={colorLabelId}
-        className="mb-1.5 block text-[11px] text-[var(--text-dim)]"
+        className="ui-label mb-1.5 block"
       >
         Tag color
       </div>
@@ -123,7 +123,7 @@ export function BoardModal({
 
       <div className="flex justify-end gap-2">
         <button
-          className="rounded-lg px-3 py-1.5 text-xs text-[var(--text-dim)] hover:bg-[var(--surface-hover)]"
+          className="rounded-[3px] px-3 py-1.5 text-xs text-[var(--text-dim)] hover:bg-[var(--surface-hover)]"
           onClick={onCancel}
         >
           Cancel
@@ -132,7 +132,7 @@ export function BoardModal({
             accent (white on the Dark sky-400 is 2.1:1), and every preset's
             bg sits at 5:1 or more against its own accent. */}
         <button
-          className="rounded-lg bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--bg)] hover:opacity-90"
+          className="rounded-[3px] bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--bg)] hover:opacity-90"
           onClick={submit}
         >
           {confirmLabel}

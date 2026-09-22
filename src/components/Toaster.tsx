@@ -54,10 +54,8 @@ export function Toaster() {
                 resume(t.id);
               }
             }}
-            className={`pointer-events-auto flex w-full items-center gap-2.5 rounded-lg bg-[var(--surface-solid)] py-2 pl-3 pr-2 text-xs text-[var(--text)] shadow-2xl ring-1 ${
-              t.kind === "error"
-                ? "ring-red-500/40"
-                : "ring-[var(--border)]"
+            className={`chrome-solid pointer-events-auto flex w-full items-center gap-2.5 py-2 pl-3 pr-2 text-xs text-[var(--text)] ${
+              t.kind === "error" ? "border-red-500/50" : ""
             }`}
           >
             <Icon

@@ -94,7 +94,7 @@ export function Modal({
         aria-modal="true"
         aria-label={ariaLabel ?? title}
         tabIndex={-1}
-        className={`${width} outline-none max-h-[90vh] overflow-y-auto rounded-xl bg-[var(--surface-solid)] p-5 text-[var(--text)] shadow-2xl ring-1 ring-[var(--border)]`}
+        className={`chrome-solid ${width} outline-none max-h-[90vh] overflow-y-auto p-5 text-[var(--text)]`}
         onMouseDown={(e) => e.stopPropagation()}
       >
         {title !== undefined && (
@@ -142,14 +142,14 @@ export function ConfirmModal({
             reflexive Enter into the very action the dialog exists to guard. */}
         <button
           autoFocus
-          className="rounded-lg px-3 py-1.5 text-xs text-[var(--text-dim)] hover:bg-[var(--surface-hover)]"
+          className="rounded-[3px] px-3 py-1.5 text-xs text-[var(--text-dim)] hover:bg-[var(--surface-hover)]"
           onClick={onClose}
         >
           Cancel
         </button>
         <button
           // Non-danger: canvas-coloured text on the accent (see BoardModal).
-          className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
+          className={`rounded-[3px] px-3 py-1.5 text-xs font-medium ${
             danger
               ? "bg-red-600 text-white hover:bg-red-500"
               : "bg-[var(--accent)] text-[var(--bg)] hover:opacity-90"

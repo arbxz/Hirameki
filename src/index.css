@@ -12,6 +12,47 @@
   --text: #f5f5f5;
   --text-dim: #a3a3a3;
   --accent: #38bdf8;
+  --shadow: rgba(0, 0, 0, 0.55);
+}
+
+/* Chrome geometry, shared by every panel, menu, toast and dialog.
+   A flat surface with one hairline border and a hard offset shadow — no
+   blur, no large radius — so the UI reads as drawn rather than floated.
+   Colours still come from the theme, so all presets keep working. */
+:root {
+  --radius-chrome: 4px;
+  --mono: ui-monospace, "Cascadia Mono", "Segoe UI Mono", Consolas, monospace;
+}
+
+.chrome,
+.chrome-solid {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-chrome);
+  box-shadow: 3px 3px 0 var(--shadow);
+}
+
+.chrome {
+  background: var(--surface);
+  backdrop-filter: blur(8px);
+}
+
+.chrome-solid {
+  background: var(--surface-solid);
+}
+
+/* Small mono labels (zoom readout, section headings, field labels, keycaps).
+   Wide tracking keeps 10-11px legible; they name things, so they stay
+   sentence-cased rather than shouting in caps. */
+.ui-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+
+.ui-mono {
+  font-family: var(--mono);
+  letter-spacing: 0.04em;
 }
 
 html,

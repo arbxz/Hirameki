@@ -148,7 +148,7 @@ export function NoteView({ note, zoom }: { note: Note; zoom: number }) {
     <div
       ref={rootRef}
       data-note-id={note.id}
-      className="sticky-note absolute left-0 top-0 flex flex-col overflow-hidden rounded-2xl shadow-lg"
+      className="sticky-note absolute left-0 top-0 flex flex-col overflow-hidden rounded-[4px] shadow-lg"
       style={{
         width,
         height,
@@ -244,7 +244,7 @@ export function NoteView({ note, zoom }: { note: Note; zoom: number }) {
       {/* color palette popover */}
       {paletteOpen && (
         <div
-          className="absolute z-10 flex rounded-lg bg-[var(--surface-solid)] shadow-xl ring-1 ring-[var(--border)]"
+          className="chrome-solid absolute z-10 flex"
           style={{
             top: headerH + 2,
             right: 6 * cs,

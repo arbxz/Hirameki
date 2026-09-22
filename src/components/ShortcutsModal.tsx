@@ -57,7 +57,7 @@ const GROUPS: { title: string; rows: [string[], string][] }[] = [
 
 function Key({ children }: { children: React.ReactNode }) {
   return (
-    <kbd className="rounded border border-[var(--border)] bg-[var(--surface)] px-1.5 py-0.5 font-sans text-[10px] font-medium text-[var(--text)]">
+    <kbd className="ui-mono rounded-[3px] border border-[var(--border)] bg-[var(--surface)] px-1.5 py-0.5 text-[10px] text-[var(--text)]">
       {children}
     </kbd>
   );
@@ -69,7 +69,7 @@ export function ShortcutsModal({ onClose }: { onClose: () => void }) {
       <div className="grid grid-cols-2 gap-x-6 gap-y-4">
         {GROUPS.map((g) => (
           <section key={g.title}>
-            <h3 className="mb-1.5 text-[11px] font-semibold text-[var(--text-dim)]">
+            <h3 className="ui-label mb-1.5">
               {g.title}
             </h3>
             <ul className="space-y-1">
