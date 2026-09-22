@@ -94,8 +94,11 @@ export function BoardModal({
         >
           Cancel
         </button>
+        {/* Text in the canvas colour, not white: most presets have a light
+            accent (white on the Dark sky-400 is 2.1:1), and every preset's
+            bg sits at 5:1 or more against its own accent. */}
         <button
-          className="rounded-lg bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
+          className="rounded-lg bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--bg)] hover:opacity-90"
           onClick={submit}
         >
           {confirmLabel}

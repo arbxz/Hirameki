@@ -148,8 +148,11 @@ export function ConfirmModal({
           Cancel
         </button>
         <button
-          className={`rounded-lg px-3 py-1.5 text-xs font-medium text-white ${
-            danger ? "bg-red-600 hover:bg-red-500" : "bg-[var(--accent)] hover:opacity-90"
+          // Non-danger: canvas-coloured text on the accent (see BoardModal).
+          className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
+            danger
+              ? "bg-red-600 text-white hover:bg-red-500"
+              : "bg-[var(--accent)] text-[var(--bg)] hover:opacity-90"
           }`}
           onClick={onConfirm}
         >

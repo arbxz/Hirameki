@@ -53,7 +53,9 @@ export const PRESETS: Record<string, Theme> = {
     border: "rgba(0,0,0,0.12)",
     text: "#1c1917",
     textDim: "#78716c",
-    accent: "#0ea5e9",
+    // sky-700, not sky-500: it colours text (toast actions) and the focus
+    // ring, and sky-500 was 2.8:1 on white.
+    accent: "#0369a1",
   },
   Sepia: {
     bg: "#efe7d8",
@@ -63,8 +65,10 @@ export const PRESETS: Record<string, Theme> = {
     surfaceHover: "rgba(120,90,50,0.10)",
     border: "rgba(120,90,50,0.20)",
     text: "#433420",
-    textDim: "#8a7659",
-    accent: "#b4762b",
+    // Both darkened for contrast on the parchment surface: muted text was
+    // 3.7:1 and the accent 3.2:1, under the 4.5:1 small-text bar.
+    textDim: "#735f43",
+    accent: "#8f5a1c",
   },
   Midnight: {
     bg: "#0b1020",
