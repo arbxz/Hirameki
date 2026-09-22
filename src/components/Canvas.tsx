@@ -468,9 +468,12 @@ export function Canvas() {
   // Chromium reports a *touchpad pinch*, and it's the plain mouse zoom shortcut.
   // A pinch reaches the page as synthetic ctrl+wheel events *before* WebView2
   // applies its own "Page Scale" zoom, and only turns into Page Scale if the
-  // page lets them through. So WebView2's pinch setting must stay ON: turning
-  // it off (IsPinchZoomEnabled=false) drops the gesture before any event is
-  // made, and pinching then does nothing at all.
+  // page lets them through. So WebView2's pinch setting must stay ON: with it
+  // off, Windows treats the pinch as a two-finger pan and the page only ever
+  // sees small horizontal scrolls. Tauri ties that setting to the window's
+  // `zoomHotkeysEnabled` (wry sets IsPinchZoomEnabled from it), which is why
+  // tauri.conf.json turns it on — and why the browser zoom keys are taken
+  // over in the effect below.
   // We take it over entirely — cancel the native zoom, keep it away from
   // InfiniteViewer's own wheel-pinch (hence the capture-phase stopPropagation;
   // its handler sits on the viewer container, and its single wheelScale can't
@@ -497,6 +500,34 @@ export function Canvas() {
     window.addEventListener("wheel", onWheel, { passive: false, capture: true });
     return () =>
       window.removeEventListener("wheel", onWheel, { capture: true });
+  }, [zoomAt]);
+
+  // `zoomHotkeysEnabled` (needed for trackpad pinch, see above) also arms
+  // WebView2's own Ctrl+= / Ctrl+- / Ctrl+0, which would scale the whole window
+  // like a browser tab — toolbars included. Cancel them everywhere, even inside
+  // a note or a dialog, and zoom the canvas about its centre instead when
+  // nothing modal is open.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      const zoomIn = e.code === "Equal" || e.code === "NumpadAdd";
+      const zoomOut = e.code === "Minus" || e.code === "NumpadSubtract";
+      const reset = e.code === "Digit0" || e.code === "Numpad0";
+      if (!zoomIn && !zoomOut && !reset) return;
+      e.preventDefault();
+      if (document.querySelector('[aria-modal="true"]')) return;
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      if (reset) {
+        zoomAt(cx, cy, 1 / viewRef.current.zoom);
+      } else {
+        zoomAt(cx, cy, Math.exp((zoomIn ? 1 : -1) * WHEEL_ZOOM_STEP * 2));
+      }
+    };
+    window.addEventListener("keydown", onKey, { capture: true });
+    return () => window.removeEventListener("keydown", onKey, { capture: true });
   }, [zoomAt]);
 
   // Paste images or image URLs from the clipboard.
