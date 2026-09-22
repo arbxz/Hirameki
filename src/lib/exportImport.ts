@@ -133,7 +133,7 @@ async function applyManifest(m: Manifest): Promise<void> {
 }
 
 /**
- * Import a bundle, REPLACING the current board. Rust restores the asset files
+ * Import a bundle, REPLACING every board on this device (all tables are wiped). Rust restores the asset files
  * and returns the manifest; we apply it to the DB then reload so all stores
  * re-init from the imported data. Returns false if cancelled.
  */
