@@ -152,7 +152,7 @@ Frameless window (`decorations: false`) with a custom [src/components/TitleBar.t
 ## Conventions
 
 - Path aliases: none — relative imports throughout.
-- Styling: Tailwind CSS 4 (via `@tailwindcss/vite`) + CSS variable theme tokens; prefer `var(--token)` over hard-coded colors so themes keep working. Global tokens/utilities live in [src/index.css](src/index.css) and [src/App.css](src/App.css).
+- Styling: Tailwind CSS 4 (via `@tailwindcss/vite`) + CSS variable theme tokens; prefer `var(--token)` over hard-coded colors so themes keep working. Global tokens/utilities live in [src/index.css](src/index.css).
 - Icons: `lucide-react`.
 - IDs are UUIDs generated in `repo.ts` on create.
 - When adding a Tauri command, register it in the `generate_handler!` list in `lib.rs`; when adding a schema change, add a *new* numbered migration file and register it there too (never edit an applied migration).
