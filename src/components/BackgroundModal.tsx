@@ -127,6 +127,7 @@ export function BackgroundModal({
           className="grid place-items-center rounded-lg bg-[var(--surface-hover)] px-2.5 hover:opacity-80 disabled:opacity-40"
           onClick={() => void onApplyUrl()}
           disabled={busy || !looksLikeUrl(urlInput)}
+          aria-label="Use this link as the background"
           title="Use link"
         >
           <Link size={14} />

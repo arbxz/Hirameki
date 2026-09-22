@@ -62,6 +62,7 @@ export function MusicWidget() {
             <button
               className="grid h-6 w-6 place-items-center rounded text-[var(--text-dim)] hover:bg-[var(--surface-hover)]"
               onClick={() => setOpen(false)}
+              aria-label="Collapse music panel"
               title="Collapse"
             >
               <X size={14} />
@@ -107,6 +108,7 @@ export function MusicWidget() {
                   <button
                     className="hidden rounded p-0.5 text-red-400 hover:bg-red-500/20 group-hover:block"
                     onClick={() => void removeTrack(t.id)}
+                    aria-label={`Remove ${t.title}`}
                     title="Remove"
                   >
                     <X size={12} />
@@ -136,6 +138,7 @@ export function MusicWidget() {
                 className="grid place-items-center rounded-lg bg-[var(--surface-hover)] px-2 hover:opacity-80 disabled:opacity-40"
                 onClick={onAddUrl}
                 disabled={!looksLikeUrl(urlInput)}
+                aria-label="Add audio URL"
                 title="Add URL"
               >
                 <Plus size={14} />
@@ -179,6 +182,7 @@ export function MusicWidget() {
         <button
           className="grid h-8 w-8 place-items-center rounded hover:bg-[var(--surface-hover)]"
           onClick={togglePlay}
+          aria-label={playing ? "Pause music" : "Play music"}
           title={playing ? "Pause" : "Play"}
         >
           {playing ? <Pause size={16} /> : <Play size={16} />}
@@ -186,6 +190,8 @@ export function MusicWidget() {
         <button
           className="grid h-8 w-8 place-items-center rounded hover:bg-[var(--surface-hover)]"
           onClick={() => setMuted(!muted)}
+          aria-label={muted ? "Unmute" : "Mute"}
+          aria-pressed={muted}
           title={muted ? "Unmute" : "Mute"}
         >
           {muted ? <VolumeX size={16} /> : <Volume2 size={16} />}
@@ -193,6 +199,8 @@ export function MusicWidget() {
         <button
           className="flex max-w-32 items-center gap-1 truncate rounded px-2 text-xs text-[var(--text-dim)] hover:bg-[var(--surface-hover)]"
           onClick={() => setOpen((o) => !o)}
+          aria-label={`Music: ${current.title} — ${open ? "collapse" : "expand"}`}
+          aria-expanded={open}
           title={current.title}
         >
           <Music size={13} className="shrink-0" />

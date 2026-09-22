@@ -70,6 +70,8 @@ export function BoardTabs() {
                   ? "bg-[var(--accent)]/20 text-[var(--text)]"
                   : "text-[var(--text-dim)] hover:bg-[var(--surface-hover)]"
               }`}
+              aria-label={`${b.name} board${active ? " (current)" : ""}`}
+              aria-current={active ? "true" : undefined}
               title={`${b.name} — right-click for options`}
             >
               <span
@@ -84,6 +86,7 @@ export function BoardTabs() {
         <button
           onClick={() => setEditing({ mode: "create" })}
           className="grid h-8 w-8 shrink-0 place-items-center rounded text-[var(--text-dim)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
+          aria-label="New board"
           title="New board"
         >
           <Plus size={15} />
