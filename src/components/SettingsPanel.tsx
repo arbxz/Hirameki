@@ -30,6 +30,7 @@ const TOKEN_LABELS: Record<keyof Theme, string> = {
   text: "Text",
   textDim: "Text (dim)",
   accent: "Accent",
+  shadow: "Shadow",
 };
 
 // A token may hold rgba(); <input type=color> needs #rrggbb. Show a usable hex
@@ -102,7 +103,7 @@ export function SettingsPanel() {
   return (
     <div className="ui-chrome absolute right-4 top-4 flex flex-col items-end gap-2">
       <button
-        className="grid h-10 w-10 place-items-center rounded-lg bg-[var(--surface)] text-[var(--text)] shadow-lg ring-1 ring-[var(--border)] backdrop-blur hover:bg-[var(--surface-hover)]"
+        className="grid h-10 w-10 place-items-center rounded-[3px] bg-[var(--surface)] text-[var(--text)] shadow-lg ring-1 ring-[var(--border)] backdrop-blur hover:bg-[var(--surface-hover)]"
         onClick={() => void addNote()}
         aria-label="Add note"
         title="Add note"
@@ -111,7 +112,7 @@ export function SettingsPanel() {
       </button>
       <button
         ref={toggleRef}
-        className="grid h-10 w-10 place-items-center rounded-lg bg-[var(--surface)] text-[var(--text)] shadow-lg ring-1 ring-[var(--border)] backdrop-blur hover:bg-[var(--surface-hover)]"
+        className="grid h-10 w-10 place-items-center rounded-[3px] bg-[var(--surface)] text-[var(--text)] shadow-lg ring-1 ring-[var(--border)] backdrop-blur hover:bg-[var(--surface-hover)]"
         onClick={() => setOpen((o) => !o)}
         aria-label={open ? "Close settings" : "Settings"}
         aria-expanded={open}
@@ -121,9 +122,9 @@ export function SettingsPanel() {
       </button>
 
       {open && (
-        <div className="w-72 rounded-xl bg-[var(--surface)] p-3 text-[var(--text)] shadow-2xl ring-1 ring-[var(--border)] backdrop-blur">
+        <div className="chrome w-72 p-3 text-[var(--text)]">
           {/* themes */}
-          <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold">
+          <div className="ui-label mb-1 flex items-center gap-1.5">
             <Palette size={14} /> Theme
           </div>
           <div className="mb-3 grid grid-cols-3 gap-1.5">
@@ -132,7 +133,7 @@ export function SettingsPanel() {
                 key={presetName}
                 onClick={() => selectPreset(presetName)}
                 aria-pressed={name === presetName}
-                className={`flex flex-col items-center gap-1 rounded-lg p-2 ring-1 ${
+                className={`flex flex-col items-center gap-1 rounded-[3px] p-2 ring-1 ${
                   name === presetName
                     ? "ring-[var(--accent)]"
                     : "ring-[var(--border)] hover:bg-[var(--surface-hover)]"
@@ -146,7 +147,7 @@ export function SettingsPanel() {
                     boxShadow: `inset 0 0 0 2px ${theme.accent}`,
                   }}
                 />
-                <span className="text-[10px]">{presetName}</span>
+                <span className="ui-mono text-[10px]">{presetName}</span>
               </button>
             ))}
           </div>
@@ -187,12 +188,12 @@ export function SettingsPanel() {
 
           {/* export / import */}
           <div className="border-t border-[var(--border)] pt-3">
-            <div className="mb-1.5 text-xs font-semibold">Board data</div>
+            <div className="ui-label mb-1.5">Board data</div>
             <div className="flex gap-1.5">
               <button
                 onClick={doExport}
                 disabled={busy !== null}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-[var(--surface-hover)] px-2 py-1.5 text-xs hover:opacity-80 disabled:opacity-40"
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-[3px] bg-[var(--surface-hover)] px-2 py-1.5 text-xs hover:opacity-80 disabled:opacity-40"
               >
                 <Download size={14} />
                 {busy === "export" ? "Exporting…" : "Export"}
@@ -201,7 +202,7 @@ export function SettingsPanel() {
                 // Import wipes every board before restoring, so it asks first.
                 onClick={() => setConfirmImport(true)}
                 disabled={busy !== null}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-[var(--surface-hover)] px-2 py-1.5 text-xs hover:opacity-80 disabled:opacity-40"
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-[3px] bg-[var(--surface-hover)] px-2 py-1.5 text-xs hover:opacity-80 disabled:opacity-40"
               >
                 <Upload size={14} />
                 {busy === "import" ? "Importing…" : "Import"}
@@ -215,10 +216,10 @@ export function SettingsPanel() {
 
           {/* app / updates */}
           <div className="mt-3 border-t border-[var(--border)] pt-3">
-            <div className="mb-1.5 text-xs font-semibold">App</div>
+            <div className="ui-label mb-1.5">App</div>
             <button
               onClick={() => setShortcuts(true)}
-              className="mb-1.5 flex w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--surface-hover)] px-2 py-1.5 text-xs hover:opacity-80"
+              className="mb-1.5 flex w-full items-center justify-center gap-1.5 rounded-[3px] bg-[var(--surface-hover)] px-2 py-1.5 text-xs hover:opacity-80"
             >
               <Keyboard size={14} />
               Keyboard shortcuts
@@ -226,7 +227,7 @@ export function SettingsPanel() {
             <button
               onClick={doCheckUpdates}
               disabled={checking}
-              className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--surface-hover)] px-2 py-1.5 text-xs hover:opacity-80 disabled:opacity-40"
+              className="flex w-full items-center justify-center gap-1.5 rounded-[3px] bg-[var(--surface-hover)] px-2 py-1.5 text-xs hover:opacity-80 disabled:opacity-40"
             >
               <RefreshCw size={14} className={checking ? "animate-spin" : ""} />
               {checking ? "Checking…" : "Check for updates"}

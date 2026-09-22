@@ -48,7 +48,7 @@ export function BoardTabs() {
   return (
     <>
       {/* board buttons, inline in the toolbar */}
-      <div className="flex h-10 items-center gap-1 rounded-lg bg-[var(--surface)] px-1 text-[var(--text)] shadow-lg ring-1 ring-[var(--border)] backdrop-blur">
+      <div className="chrome flex h-10 items-center gap-1 px-1 text-[var(--text)]">
         {boards.map((b) => {
           const active = b.id === activeId;
           return (
@@ -67,7 +67,7 @@ export function BoardTabs() {
                   y: r.bottom + 6,
                 });
               }}
-              className={`flex h-8 items-center gap-1.5 rounded px-2.5 text-xs transition-colors ${
+              className={`flex h-8 items-center gap-1.5 rounded-[3px] px-2.5 text-xs transition-colors ${
                 active
                   ? "bg-[var(--accent)]/20 text-[var(--text)]"
                   : "text-[var(--text-dim)] hover:bg-[var(--surface-hover)]"
@@ -104,7 +104,7 @@ export function BoardTabs() {
           ref={menuRef}
           role="menu"
           aria-label="Board options"
-          className="ui-chrome fixed z-[3000] w-36 overflow-hidden rounded-lg bg-[var(--surface-solid)] py-1 text-xs text-[var(--text)] shadow-2xl ring-1 ring-[var(--border)]"
+          className="chrome-solid ui-chrome fixed z-[3000] w-36 overflow-hidden py-1 text-xs text-[var(--text)]"
           style={{ left: menu.x, top: menu.y }}
         >
           {(() => {

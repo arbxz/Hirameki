@@ -13,6 +13,7 @@ export interface Theme {
   text: string; // primary text
   textDim: string; // muted text
   accent: string; // highlight (selection chips, focus)
+  shadow: string; // hard offset shadow under chrome (see .chrome in index.css)
 }
 
 export const THEME_TOKENS: (keyof Theme)[] = [
@@ -25,6 +26,7 @@ export const THEME_TOKENS: (keyof Theme)[] = [
   "text",
   "textDim",
   "accent",
+  "shadow",
 ];
 
 // kebab CSS var name for a token (bg -> --bg, surfaceSolid -> --surface-solid).
@@ -43,6 +45,7 @@ export const PRESETS: Record<string, Theme> = {
     text: "#f5f5f5",
     textDim: "#a3a3a3",
     accent: "#38bdf8",
+    shadow: "rgba(0, 0, 0, 0.55)",
   },
   Light: {
     bg: "#f5f5f4",
@@ -56,6 +59,7 @@ export const PRESETS: Record<string, Theme> = {
     // sky-700, not sky-500: it colours text (toast actions) and the focus
     // ring, and sky-500 was 2.8:1 on white.
     accent: "#0369a1",
+    shadow: "rgba(28, 25, 23, 0.20)",
   },
   Sepia: {
     bg: "#efe7d8",
@@ -69,6 +73,23 @@ export const PRESETS: Record<string, Theme> = {
     // 3.7:1 and the accent 3.2:1, under the 4.5:1 small-text bar.
     textDim: "#735f43",
     accent: "#8f5a1c",
+    shadow: "rgba(67, 52, 32, 0.22)",
+  },
+  Paper: {
+    bg: "#fefefe",
+    grid: "rgba(30,30,30,0.13)",
+    surface: "rgba(254,254,254,0.92)",
+    surfaceSolid: "#ffffff",
+    surfaceHover: "rgba(30,30,30,0.07)",
+    // A real ink line, not a hairline tint: this preset leans on borders
+    // instead of fills to separate chrome from the canvas.
+    border: "rgba(30,30,30,0.32)",
+    text: "#1e1e1e",
+    textDim: "#5c5c5c",
+    // typesafe.ai's pink is 2.4:1 on paper. Same hue, taken deep enough to
+    // carry text and focus rings (5.9:1).
+    accent: "#c2185b",
+    shadow: "rgba(30,30,30,0.22)",
   },
   Midnight: {
     bg: "#0b1020",
@@ -80,6 +101,7 @@ export const PRESETS: Record<string, Theme> = {
     text: "#e6ecff",
     textDim: "#8da2c9",
     accent: "#7c9cff",
+    shadow: "rgba(0, 0, 0, 0.55)",
   },
   Forest: {
     bg: "#0f1a14",
@@ -91,6 +113,7 @@ export const PRESETS: Record<string, Theme> = {
     text: "#e7f5ec",
     textDim: "#8fc7a4",
     accent: "#4ade80",
+    shadow: "rgba(0, 0, 0, 0.55)",
   },
 };
 
