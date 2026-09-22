@@ -1,6 +1,5 @@
 import { useEffect } from "react";
 import { Canvas } from "./components/Canvas";
-import { MusicWidget } from "./components/MusicWidget";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { TitleBar } from "./components/TitleBar";
 import { Toaster } from "./components/Toaster";
@@ -19,11 +18,10 @@ function App() {
   return (
     <div className="flex h-full flex-col">
       <TitleBar />
-      {/* `relative` so the canvas overlays (toolbar, settings, music) anchor
+      {/* `relative` so the canvas overlays (toolbar, settings) anchor
           below the title bar instead of the viewport top. */}
       <div className="relative min-h-0 flex-1">
         <Canvas />
-        <MusicWidget />
         <SettingsPanel />
         {/* Errors, undo prompts and progress all surface here. */}
         <Toaster />

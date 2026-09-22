@@ -605,7 +605,7 @@ export function Canvas() {
       onDrop={onDrop}
       onContextMenu={(e) => {
         // Only offer "Add note here" on empty canvas — not over UI chrome
-        // (toolbar, settings, music, tabs), editable fields, or existing notes.
+        // (toolbar, settings, tabs), editable fields, or existing notes.
         const t = e.target as HTMLElement;
         if (
           t.closest?.(

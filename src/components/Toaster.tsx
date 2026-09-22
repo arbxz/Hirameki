@@ -1,10 +1,10 @@
 import { AlertCircle, CheckCircle2, Info, Loader2, X } from "lucide-react";
 import { useToastStore, type ToastKind } from "../store/toastStore";
 
-// Renders the toast stack bottom-centre (between the music widget and the zoom
-// controls, both of which sit in the bottom corners). `ui-chrome` keeps Selecto
-// from starting a marquee on it; the wrapper is pointer-transparent so an empty
-// stack never steals canvas clicks.
+// Renders the toast stack bottom-centre, clear of the zoom controls in the
+// bottom-right corner. `ui-chrome` keeps Selecto from starting a marquee on it;
+// the wrapper is pointer-transparent so an empty stack never steals canvas
+// clicks.
 
 const ICONS: Record<ToastKind, typeof Info> = {
   info: Info,

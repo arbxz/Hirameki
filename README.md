@@ -9,10 +9,6 @@
   arranging ideas, and setting the mood.
 </p>
 
-<p align="center">
-  <em>Hirameki (ひらめき) — a flash of inspiration.</em>
-</p>
-
 ---
 
 ## What it is
@@ -30,7 +26,6 @@ boards — all stored locally on your machine.
 - **Multiple boards** — tabs with customizable color tags, reorderable tabs, and
   a fixed per-board background image.
 - **Themes** — built-in presets plus a custom color editor.
-- **Background music** — a built-in lofi widget to set the mood while you work.
 - **Export / import** — bundle every image and sound from a board into a single
   file to back up or move between machines.
 - **Custom title bar** — frameless window with its own controls.

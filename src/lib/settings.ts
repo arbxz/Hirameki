@@ -1,7 +1,7 @@
 import { getDb } from "./db";
 
 // Thin key/value accessor over the `settings` table. Values are stored as TEXT;
-// callers serialize/parse. Used for theme + music persistence.
+// callers serialize/parse. Used for theme and active-board persistence.
 
 export async function getSetting(key: string): Promise<string | null> {
   const db = await getDb();
