@@ -466,6 +466,11 @@ export function Canvas() {
 
   // Ctrl+wheel is overloaded: it's WebView2's native page-zoom gesture, it's how
   // Chromium reports a *touchpad pinch*, and it's the plain mouse zoom shortcut.
+  // A pinch reaches the page as synthetic ctrl+wheel events *before* WebView2
+  // applies its own "Page Scale" zoom, and only turns into Page Scale if the
+  // page lets them through. So WebView2's pinch setting must stay ON: turning
+  // it off (IsPinchZoomEnabled=false) drops the gesture before any event is
+  // made, and pinching then does nothing at all.
   // We take it over entirely — cancel the native zoom, keep it away from
   // InfiniteViewer's own wheel-pinch (hence the capture-phase stopPropagation;
   // its handler sits on the viewer container, and its single wheelScale can't
