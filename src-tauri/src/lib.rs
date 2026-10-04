@@ -6,6 +6,9 @@ mod storage;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // reqwest is built without a bundled TLS crypto provider; install ring once.
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     let migrations = vec![
         Migration {
             version: 1,
