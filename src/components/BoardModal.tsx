@@ -7,7 +7,7 @@ import { Modal } from "./Modal";
 // "Rename". Overlay/portal behavior lives in the shared Modal component.
 
 // A small curated palette for tab tags; null = no tag.
-export const TAB_COLORS = [
+const TAB_COLORS = [
   "#f87171", // red
   "#fb923c", // orange
   "#fbbf24", // amber

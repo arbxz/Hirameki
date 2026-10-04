@@ -10,7 +10,7 @@ import type {
   OnRotateGroup,
 } from "react-moveable";
 import { useBoardStore } from "../store/boardStore";
-import { itemTransform } from "./ItemView";
+import { itemTransform } from "./itemTransform";
 
 // Phase 4 manipulation layer. react-selecto handles click + marquee selection;
 // react-moveable handles drag / resize / rotate for one or many targets.
@@ -63,6 +63,9 @@ export function SelectionLayer({
     return selectedIds
       .map((id) => worldEl.querySelector<HTMLElement>(`[data-item-id="${id}"]`))
       .filter((el): el is HTMLElement => el !== null);
+    // `items` isn't read here, but its nodes re-render when it changes, so the
+    // query has to run again to pick up the new elements.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [worldEl, selectedIds, items]);
 
   // Every other item on the board is a snap reference. Deliberately keyed on

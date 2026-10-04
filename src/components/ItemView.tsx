@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { resolveImageSrc } from "../lib/images";
 import type { Item } from "../types/board";
+import { itemTransform } from "./itemTransform";
 
 // Renders a single board item. Position/size/rotation are expressed purely as a
 // CSS transform (translate + rotate) on an element anchored at 0,0 — this is
@@ -11,11 +12,6 @@ function colorFor(id: string): string {
   let h = 0;
   for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) % 360;
   return `hsl(${h} 55% 55%)`;
-}
-
-/** The single source of truth for an item's visual transform. */
-export function itemTransform(x: number, y: number, rotation: number): string {
-  return `translate(${x}px, ${y}px) rotate(${rotation}deg)`;
 }
 
 export function ItemView({
