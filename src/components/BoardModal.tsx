@@ -97,7 +97,7 @@ export function BoardModal({
       >
         <button
           onClick={() => setColor(null)}
-          className="grid h-6 w-6 place-items-center rounded-full ring-1 ring-[var(--border)]"
+          className="swatch grid h-6 w-6 place-items-center rounded-full ring-1 ring-[var(--border)] hover:ring-[var(--text-dim)]"
           style={color === null ? { boxShadow: SELECTED_RING } : undefined}
           aria-label="No tag"
           aria-pressed={color === null}
@@ -109,7 +109,7 @@ export function BoardModal({
           <button
             key={c}
             onClick={() => setColor(c)}
-            className="h-6 w-6 rounded-full"
+            className="swatch h-6 w-6 rounded-full"
             style={{
               background: c,
               ...(color === c ? { boxShadow: SELECTED_RING } : {}),

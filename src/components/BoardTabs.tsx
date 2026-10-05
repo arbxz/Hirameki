@@ -69,7 +69,7 @@ export function BoardTabs() {
               }}
               className={`flex h-8 items-center gap-1.5 rounded-[3px] px-2.5 text-xs transition-colors ${
                 active
-                  ? "bg-[var(--accent)]/20 text-[var(--text)]"
+                  ? "bg-[var(--accent)]/20 text-[var(--text)] hover:bg-[var(--accent)]/30"
                   : "text-[var(--text-dim)] hover:bg-[var(--surface-hover)]"
               }`}
               aria-label={`${b.name} board${active ? " (current)" : ""}`}

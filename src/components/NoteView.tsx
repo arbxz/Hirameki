@@ -142,7 +142,7 @@ export function NoteView({ note, zoom }: { note: Note; zoom: number }) {
     setNoteStyle(note.id, { fontSize: stepFontSize(note.fontSize, dir) });
 
   const iconBtn =
-    "grid place-items-center rounded opacity-60 hover:opacity-100 hover:bg-black/10";
+    "note-ctl grid place-items-center rounded hover:bg-black/10";
 
   return (
     <div
@@ -255,7 +255,7 @@ export function NoteView({ note, zoom }: { note: Note; zoom: number }) {
         >
           {/* accent-following default */}
           <button
-            className={`rounded-full ring-1 ring-black/20 ${
+            className={`swatch rounded-full ring-1 ring-black/20 ${
               note.color === null ? "outline outline-2 outline-[var(--accent)]" : ""
             }`}
             style={{ width: 18 * cs, height: 18 * cs, background: "var(--accent)" }}
@@ -266,7 +266,7 @@ export function NoteView({ note, zoom }: { note: Note; zoom: number }) {
           {NOTE_COLOR_KEYS.map((key) => (
             <button
               key={key}
-              className={`rounded-full ring-1 ring-black/20 ${
+              className={`swatch rounded-full ring-1 ring-black/20 ${
                 note.color === key ? "outline outline-2 outline-[var(--accent)]" : ""
               }`}
               style={{
@@ -299,7 +299,7 @@ export function NoteView({ note, zoom }: { note: Note; zoom: number }) {
         style={{ width: handlePx, height: handlePx, touchAction: "none" }}
         onPointerDown={startGesture("resize")}
       >
-        <svg viewBox="0 0 10 10" className="h-full w-full opacity-40">
+        <svg viewBox="0 0 10 10" className="note-ctl h-full w-full">
           <path d="M9 3 L3 9 M9 6 L6 9" stroke="currentColor" strokeWidth="1" />
         </svg>
       </div>
