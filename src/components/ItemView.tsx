@@ -42,7 +42,7 @@ export function ItemView({
       data-item-id={item.id}
       className={`board-item absolute left-0 top-0 overflow-hidden rounded-[3px] shadow-lg ${
         selected
-          ? "ring-2"
+          ? "is-selected ring-2"
           : item.groupId
             ? "ring-2 ring-violet-400/60"
             : "ring-1 ring-black/20"

@@ -1,5 +1,13 @@
 @import "tailwindcss";
 
+/* Tailwind 4 compiles `hover:` to `@media (hover: hover) { &:hover }`. This is
+   a desktop app, but the window reports `hover: none` / `pointer: coarse` on a
+   touchscreen laptop (maxTouchPoints 10), so every hover: utility in the app
+   silently did nothing there — mouse and trackpad included. Bind the variant
+   to the plain pseudo-class; a tap may leave a hover style until the next tap,
+   which is a far smaller cost than no hover feedback at all. */
+@custom-variant hover (&:hover);
+
 /* Theme tokens. These defaults match the "Dark" preset; the theme store
    overrides them on <html> at runtime (see src/store/themeStore.ts). */
 :root {
@@ -91,6 +99,97 @@ textarea,
   outline: 2px solid var(--accent);
   outline-offset: 2px;
   border-radius: 4px;
+}
+
+/* Pointer feedback. Tailwind 4 no longer gives buttons `cursor: pointer`, so
+   every control in the app was showing a plain arrow. */
+button:not(:disabled),
+summary,
+[role="menuitem"]:not([disabled]),
+label:has(> input[type="color"]) {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+/* One shared hover/press rhythm. Short enough to feel immediate, long enough
+   that the change registers instead of snapping. Only compositor-friendly and
+   cheap properties are animated. */
+button,
+summary,
+[role="menuitem"],
+.board-item,
+.swatch {
+  transition:
+    background-color 120ms ease,
+    color 120ms ease,
+    opacity 120ms ease,
+    border-color 120ms ease,
+    outline-color 120ms ease,
+    transform 120ms ease;
+}
+
+/* Pressed state: every control dips slightly, so a click is acknowledged even
+   when the action itself takes a moment. */
+button:not(:disabled):active {
+  transform: translateY(1px);
+}
+
+.swatch:not(:disabled):hover {
+  transform: scale(1.12);
+}
+
+.swatch:not(:disabled):active {
+  transform: scale(1.04);
+}
+
+/* Images on the canvas: a hover outline says "this is selectable" before the
+   click. Outline, not box-shadow, because the selected state sets box-shadow
+   inline and inline styles win. */
+.board-item:hover {
+  cursor: pointer;
+  outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: 0;
+}
+
+.board-item.is-selected:hover {
+  outline: none;
+}
+
+/* A note stays calm until you reach for it: its header buttons and resize
+   handle sit back, lift when the note is hovered, and come fully up on the
+   control itself. Plain CSS rather than group-hover utilities, so the three
+   levels can't be reordered by utility sorting. */
+.note-ctl {
+  opacity: 0.45;
+  transition: opacity 120ms ease;
+}
+
+.sticky-note:hover .note-ctl {
+  opacity: 0.75;
+}
+
+.sticky-note .note-ctl:hover {
+  opacity: 1;
+}
+
+/* Someone who asked their OS for less motion gets the same states, instantly. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  button:not(:disabled):active,
+  .swatch:not(:disabled):hover,
+  .swatch:not(:disabled):active {
+    transform: none;
+  }
 }
 
 /* Don't let images be dragged out as ghost images. */

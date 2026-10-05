@@ -135,7 +135,7 @@ export function SettingsPanel() {
                 aria-pressed={name === presetName}
                 className={`flex flex-col items-center gap-1 rounded-[3px] p-2 ring-1 ${
                   name === presetName
-                    ? "ring-[var(--accent)]"
+                    ? "ring-[var(--accent)] hover:bg-[var(--surface-hover)]"
                     : "ring-[var(--border)] hover:bg-[var(--surface-hover)]"
                 }`}
                 title={presetName}
