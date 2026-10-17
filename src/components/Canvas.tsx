@@ -804,13 +804,17 @@ export function Canvas() {
         {/* board switcher */}
         <BoardTabs />
         <button
+          data-tour="upload"
           className="chrome flex h-10 items-center gap-1.5 px-3 text-xs text-[var(--text)] hover:bg-[var(--surface-hover)]"
           onClick={() => fileInputRef.current?.click()}
         >
           <ImagePlus size={14} />
           Upload images
         </button>
-        <div className="flex h-10 items-center gap-1 rounded-[3px] bg-[var(--surface)] px-1 text-[var(--text)] shadow-lg ring-1 ring-[var(--border)] backdrop-blur">
+        <div
+          data-tour="undo"
+          className="chrome flex h-10 items-center gap-1 px-1 text-[var(--text)]"
+        >
           <button
             className={`${chip} disabled:opacity-30 disabled:hover:bg-transparent`}
             onClick={() => void undo()}
@@ -831,7 +835,7 @@ export function Canvas() {
           </button>
         </div>
         {selectedIds.length > 0 && (
-          <div className="flex h-10 items-center gap-1 rounded-[3px] bg-[var(--surface)] px-1 text-[var(--text)] shadow-lg ring-1 ring-[var(--border)] backdrop-blur">
+          <div className="chrome flex h-10 items-center gap-1 px-1 text-[var(--text)]">
             <button
               className={chip}
               onClick={() => bringToFront(selectedIds)}
@@ -896,7 +900,10 @@ export function Canvas() {
       </div>
 
       {/* zoom controls */}
-      <div className="chrome ui-chrome absolute bottom-4 right-4 flex items-center gap-1 p-1 text-[var(--text)]">
+      <div
+        data-tour="zoom"
+        className="chrome ui-chrome absolute bottom-4 right-4 flex items-center gap-1 p-1 text-[var(--text)]"
+      >
         <button
           className={chip}
           onClick={() => applyZoom(zoom / 1.2)}

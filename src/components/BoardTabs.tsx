@@ -48,7 +48,8 @@ export function BoardTabs() {
   return (
     <>
       {/* board buttons, inline in the toolbar */}
-      <div className="chrome flex h-10 items-center gap-1 px-1 text-[var(--text)]">
+      <div data-tour="boards"
+        className="chrome flex h-10 items-center gap-1 px-1 text-[var(--text)]">
         {boards.map((b) => {
           const active = b.id === activeId;
           return (

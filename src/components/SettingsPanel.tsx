@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  Compass,
   Download,
   Keyboard,
   Palette,
@@ -15,6 +16,7 @@ import { exportBundle, importBundle } from "../lib/exportImport";
 import { useBoardStore } from "../store/boardStore";
 import { checkForUpdates } from "../lib/updater";
 import { ShortcutsModal } from "./ShortcutsModal";
+import { useOnboardingStore } from "../store/onboardingStore";
 import { ConfirmModal } from "./Modal";
 
 // Settings panel (top-right, ui-chrome). Theme presets + a custom color editor,
@@ -48,6 +50,7 @@ export function SettingsPanel() {
   const [checking, setChecking] = useState(false);
   const [shortcuts, setShortcuts] = useState(false);
   const [confirmImport, setConfirmImport] = useState(false);
+  const startTour = useOnboardingStore((s) => s.start);
   const toggleRef = useRef<HTMLButtonElement>(null);
 
   // Escape closes the panel and hands focus back to its toggle. Skipped while
@@ -217,6 +220,16 @@ export function SettingsPanel() {
           {/* app / updates */}
           <div className="mt-3 border-t border-[var(--border)] pt-3">
             <div className="ui-label mb-1.5">App</div>
+            <button
+              onClick={() => {
+                setOpen(false);
+                startTour();
+              }}
+              className="mb-1.5 flex w-full items-center justify-center gap-1.5 rounded-[3px] bg-[var(--surface-hover)] px-2 py-1.5 text-xs hover:opacity-80"
+            >
+              <Compass size={14} />
+              Quick tour
+            </button>
             <button
               onClick={() => setShortcuts(true)}
               className="mb-1.5 flex w-full items-center justify-center gap-1.5 rounded-[3px] bg-[var(--surface-hover)] px-2 py-1.5 text-xs hover:opacity-80"
