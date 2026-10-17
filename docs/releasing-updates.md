@@ -99,9 +99,9 @@ The `.sig` files are the signatures the updater verifies.
 
 ## Hosting: GitHub Releases (configured)
 
-- **Repo**: `arbxz/shdx-inspo`
+- **Repo**: `arbxz/hirameki`
 - **Endpoint** (already set in `tauri.conf.json`):
-  `https://github.com/arbxz/shdx-inspo/releases/latest/download/latest.json`
+  `https://github.com/arbxz/hirameki/releases/latest/download/latest.json`
   — this always resolves to the newest release's manifest.
 - **Workflow**: [`.github/workflows/release.yml`](../.github/workflows/release.yml)
   uses [`tauri-apps/tauri-action`](https://github.com/tauri-apps/tauri-action)
