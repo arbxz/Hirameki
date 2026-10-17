@@ -175,6 +175,13 @@ button:not(:disabled):active {
   opacity: 1;
 }
 
+/* Window controls are full-height segments of a hairline bar; the 1px press
+   dip that suits a free-standing button reads as a wobble here. Their hover
+   fill is the feedback instead. */
+.titlebar-control:not(:disabled):active {
+  transform: none;
+}
+
 /* Someone who asked their OS for less motion gets the same states, instantly. */
 @media (prefers-reduced-motion: reduce) {
   *,
