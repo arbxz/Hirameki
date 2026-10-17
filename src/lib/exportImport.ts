@@ -94,12 +94,23 @@ function assetPaths(m: Manifest): string[] {
   return [...new Set(paths)];
 }
 
+/**
+ * Default name offered when exporting. Dated, so a second backup doesn't
+ * silently overwrite the first, and sorted sensibly in a folder listing.
+ */
+export function exportFileName(now: Date = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  // Local date, not ISO/UTC: the name should match the day the user is having.
+  const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  return `hirameki-boards-${stamp}.json`;
+}
+
 /** Export the whole board to a user-chosen .json file. Returns false if cancelled. */
 export async function exportBundle(): Promise<boolean> {
   const manifest = await dumpManifest();
   const outPath = await save({
-    defaultPath: "inspo-board-export.json",
-    filters: [{ name: "Inspo Board", extensions: ["json"] }],
+    defaultPath: exportFileName(),
+    filters: [{ name: "Hirameki boards", extensions: ["json"] }],
   });
   if (!outPath) return false;
   await invoke("export_data", {
@@ -140,7 +151,7 @@ async function applyManifest(m: Manifest): Promise<void> {
 export async function importBundle(): Promise<boolean> {
   const inPath = await open({
     multiple: false,
-    filters: [{ name: "Inspo Board", extensions: ["json"] }],
+    filters: [{ name: "Hirameki boards", extensions: ["json"] }],
   });
   if (!inPath || Array.isArray(inPath)) return false;
   const manifestJson = await invoke<string>("import_data", { inPath });

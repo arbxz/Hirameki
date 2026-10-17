@@ -7,7 +7,25 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn(), save: vi.fn() }));
 vi.mock("./db", () => ({ getDb: vi.fn() }));
 
-const { validateManifest } = await import("./exportImport");
+const { validateManifest, exportFileName } = await import("./exportImport");
+
+describe("exportFileName", () => {
+  it("names the bundle after the app and the day", () => {
+    expect(exportFileName(new Date(2026, 9, 17))).toBe("hirameki-boards-2026-10-17.json");
+  });
+
+  it("zero-pads so names sort chronologically", () => {
+    expect(exportFileName(new Date(2026, 0, 5))).toBe("hirameki-boards-2026-01-05.json");
+  });
+
+  it("uses the local day, not UTC", () => {
+    // 23:30 local on the 17th is already the 18th in UTC; the file should
+    // still say the 17th, which is the day the user is having.
+    expect(exportFileName(new Date(2026, 9, 17, 23, 30))).toBe(
+      "hirameki-boards-2026-10-17.json",
+    );
+  });
+});
 
 describe("validateManifest", () => {
   it("accepts a well-formed bundle with known tables and columns", () => {
