@@ -3,6 +3,8 @@ name = "hirameki"
 version = "0.3.0"
 description = "Hirameki — a visual inspiration mood board"
 authors = ["arbxz"]
+license = "MIT"
+repository = "https://github.com/arbxz/hirameki"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
