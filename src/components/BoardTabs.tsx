@@ -1,16 +1,35 @@
 import { useEffect, useRef, useState } from "react";
-import { Image as ImageIcon, Pencil, Plus, Trash2 } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Image as ImageIcon,
+  Pencil,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import { useBoardStore } from "../store/boardStore";
 import { BoardModal } from "./BoardModal";
 import { BackgroundModal } from "./BackgroundModal";
 import { ConfirmModal } from "./Modal";
 import { useMenuKeyboard } from "./useMenuKeyboard";
+import { insertionIndex, moveItem, orderAfterDrop } from "../lib/reorder";
 import type { Board } from "../types/board";
 
 // Board switcher rendered as a row of buttons inside the toolbar. Click a board
-// button to switch; right-click (or the ⋯-style hover affordance) for rename /
-// background / delete; the + button creates a new board. All dialogs use the
-// shared full-screen Modal so nothing is clipped by the toolbar.
+// button to switch; drag one sideways to reorder; right-click (or the ⋯-style
+// hover affordance) for rename / background / delete; the + button creates a
+// new board. All dialogs use the shared full-screen Modal so nothing is
+// clipped by the toolbar.
+//
+// The drag is pointer-based rather than HTML5 drag-and-drop: these tabs live
+// in a WebView where a native drag would fight the canvas's own drop handling,
+// and pointer capture gives the same gesture with less to go wrong. Dragging
+// is never the only way — the context menu and Ctrl+Shift+arrows move a tab
+// too (WCAG 2.2 "dragging movements").
+
+// How far the pointer must travel before a press becomes a drag rather than a
+// click. Below this, a slightly shaky click still just switches boards.
+const DRAG_THRESHOLD = 4;
 
 type Editing =
   | { mode: "create" }
@@ -32,6 +51,16 @@ export function BoardTabs() {
     null,
   );
   const [pendingDelete, setPendingDelete] = useState<Board | null>(null);
+  const reorderBoards = useBoardStore((s) => s.reorderBoards);
+  // The tab being dragged, and the gap it would drop into.
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dropGap, setDropGap] = useState<number | null>(null);
+  const [markerX, setMarkerX] = useState(0);
+  const rowRef = useRef<HTMLDivElement>(null);
+  const drag = useRef<{ id: string; x: number; moved: boolean } | null>(null);
+  // Set when a press turned into a drag, so the click that follows the release
+  // doesn't also switch boards.
+  const suppressClick = useRef(false);
   const menuRef = useRef<HTMLDivElement>(null);
   useMenuKeyboard(menuRef, menu !== null, () => setMenu(null));
 
@@ -45,18 +74,114 @@ export function BoardTabs() {
     return () => window.removeEventListener("pointerdown", close);
   }, [menu]);
 
+  /** Move a board by one place; shared by the menu items and the shortcut. */
+  const moveBoard = (id: string, delta: -1 | 1) => {
+    const from = boards.findIndex((b) => b.id === id);
+    const to = from + delta;
+    if (from < 0 || to < 0 || to >= boards.length) return;
+    void reorderBoards(moveItem(boards.map((b) => b.id), from, to));
+    // The row re-renders around the moved tab; keep the keyboard on it.
+    requestAnimationFrame(() => {
+      rowRef.current?.querySelector<HTMLElement>(`[data-board-id="${id}"]`)?.focus();
+    });
+  };
+
+  const onTabPointerDown = (e: React.PointerEvent, id: string) => {
+    if (e.button !== 0) return;
+    drag.current = { id, x: e.clientX, moved: false };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  const onTabPointerMove = (e: React.PointerEvent) => {
+    const d = drag.current;
+    if (!d) return;
+    if (!d.moved && Math.abs(e.clientX - d.x) < DRAG_THRESHOLD) return;
+    if (!d.moved) {
+      d.moved = true;
+      setDragId(d.id);
+    }
+    const row = rowRef.current;
+    const tabs = row
+      ? [...row.querySelectorAll<HTMLElement>("[data-board-id]")]
+      : [];
+    const mids = tabs.map((el) => {
+      const r = el.getBoundingClientRect();
+      return r.left + r.width / 2;
+    });
+    const gap = insertionIndex(mids, e.clientX);
+    setDropGap(gap);
+    // Marker position is measured, not laid out: inserting a 6px element
+    // between the tabs would shift every later tab mid-drag and make the drop
+    // point drift under the pointer.
+    const rowLeft = row?.getBoundingClientRect().left ?? 0;
+    const edge =
+      gap === 0
+        ? (tabs[0]?.getBoundingClientRect().left ?? rowLeft) - 2
+        : (tabs[gap - 1]?.getBoundingClientRect().right ?? rowLeft) + 2;
+    setMarkerX(edge - rowLeft);
+  };
+
+  const onTabPointerUp = (e: React.PointerEvent) => {
+    const d = drag.current;
+    drag.current = null;
+    if (!d) return;
+    e.currentTarget.releasePointerCapture?.(e.pointerId);
+    const gap = dropGap;
+    setDragId(null);
+    setDropGap(null);
+    if (!d.moved) return;
+    suppressClick.current = true;
+    const from = boards.findIndex((b) => b.id === d.id);
+    if (from < 0 || gap === null) return;
+    const ids = orderAfterDrop(boards.map((b) => b.id), from, gap);
+    if (ids.some((id, i) => id !== boards[i]?.id)) void reorderBoards(ids);
+  };
+
   return (
     <>
       {/* board buttons, inline in the toolbar */}
-      <div data-tour="boards"
-        className="chrome flex h-10 items-center gap-1 px-1 text-[var(--text)]">
+      <div
+        ref={rowRef}
+        data-tour="boards"
+        className="chrome relative flex h-10 items-center gap-1 px-1 text-[var(--text)]"
+      >
+        {dragId !== null && dropGap !== null && (
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute top-1/2 h-6 w-0.5 -translate-y-1/2 rounded-full bg-[var(--accent)]"
+            style={{ left: markerX }}
+          />
+        )}
         {boards.map((b) => {
           const active = b.id === activeId;
           return (
-            <button
-              key={b.id}
-              onClick={() => void switchBoard(b.id)}
-              onContextMenu={(e) => {
+            <span key={b.id} className="flex h-8 items-center">
+              <button
+                data-board-id={b.id}
+                style={{ touchAction: "none" }}
+                onPointerDown={(e) => onTabPointerDown(e, b.id)}
+                onPointerMove={onTabPointerMove}
+                onPointerUp={onTabPointerUp}
+                onPointerCancel={onTabPointerUp}
+                onKeyDown={(e) => {
+                  // Keyboard equivalent of the drag.
+                  if (!e.ctrlKey || !e.shiftKey) return;
+                  if (e.key === "ArrowLeft") {
+                    e.preventDefault();
+                    moveBoard(b.id, -1);
+                  } else if (e.key === "ArrowRight") {
+                    e.preventDefault();
+                    moveBoard(b.id, 1);
+                  }
+                }}
+                onClick={() => {
+                  if (suppressClick.current) {
+                    suppressClick.current = false;
+                    return;
+                  }
+                  void switchBoard(b.id);
+                }}
+                onContextMenu={(e) => {
                 e.preventDefault();
                 // Anchor the menu just under the tab that was clicked, clamped
                 // so a right-most tab's menu doesn't overflow the window.
@@ -68,24 +193,27 @@ export function BoardTabs() {
                   y: r.bottom + 6,
                 });
               }}
-              className={`flex h-8 items-center gap-1.5 rounded-[3px] px-2.5 text-xs transition-colors ${
-                active
-                  ? "bg-[var(--accent)]/20 text-[var(--text)] hover:bg-[var(--accent)]/30"
-                  : "text-[var(--text-dim)] hover:bg-[var(--surface-hover)]"
-              }`}
-              aria-label={`${b.name} board${active ? " (current)" : ""}`}
-              aria-current={active ? "true" : undefined}
-              aria-haspopup="menu"
-              // The context-menu key and Shift+F10 fire contextmenu on the
-              // focused tab too, so the menu is reachable without a mouse.
-              title={`${b.name} — right-click or Shift+F10 for options`}
-            >
-              <span
-                className="h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-black/20"
-                style={{ background: b.color ?? "transparent" }}
-              />
-              <span className="max-w-28 truncate">{b.name}</span>
-            </button>
+                className={`flex h-8 items-center gap-1.5 rounded-[3px] px-2.5 text-xs transition-colors ${
+                  dragId === b.id ? "opacity-50" : ""
+                } ${
+                  active
+                    ? "bg-[var(--accent)]/20 text-[var(--text)] hover:bg-[var(--accent)]/30"
+                    : "text-[var(--text-dim)] hover:bg-[var(--surface-hover)]"
+                }`}
+                aria-label={`${b.name} board${active ? " (current)" : ""}`}
+                aria-current={active ? "true" : undefined}
+                aria-haspopup="menu"
+                // The context-menu key and Shift+F10 fire contextmenu on the
+                // focused tab too, so the menu is reachable without a mouse.
+                title={`${b.name} — drag to reorder · right-click or Shift+F10 for options`}
+              >
+                <span
+                  className="h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-black/20"
+                  style={{ background: b.color ?? "transparent" }}
+                />
+                <span className="max-w-28 truncate">{b.name}</span>
+              </button>
+            </span>
           );
         })}
 
@@ -122,6 +250,28 @@ export function BoardTabs() {
                   }}
                 >
                   <Pencil size={13} /> Rename
+                </button>
+                <button
+                  role="menuitem"
+                  disabled={boards[0]?.id === b.id}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-[var(--surface-hover)] focus-visible:bg-[var(--surface-hover)] disabled:opacity-40"
+                  onClick={() => {
+                    setMenu(null);
+                    moveBoard(b.id, -1);
+                  }}
+                >
+                  <ChevronLeft size={13} /> Move left
+                </button>
+                <button
+                  role="menuitem"
+                  disabled={boards[boards.length - 1]?.id === b.id}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-[var(--surface-hover)] focus-visible:bg-[var(--surface-hover)] disabled:opacity-40"
+                  onClick={() => {
+                    setMenu(null);
+                    moveBoard(b.id, 1);
+                  }}
+                >
+                  <ChevronRight size={13} /> Move right
                 </button>
                 <button
                   role="menuitem"
