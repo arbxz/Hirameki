@@ -54,7 +54,8 @@ file's hash against the release notes if you prefer. Updates after that are
 
 **Boards and notes**
 - Tabs for as many boards as you like, each with a colour tag, its own saved
-  pan and zoom, and an optional fixed background image or GIF.
+  pan and zoom, and an optional fixed background image or GIF. Drag a tab to
+  reorder it.
 - Sticky notes with their own palette, frosted or solid backgrounds, and text
   that scales with the canvas.
 

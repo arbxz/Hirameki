@@ -17,6 +17,7 @@ const GROUPS: { title: string; rows: [string[], string][] }[] = [
       [["Shift", "1"], "Zoom to fit everything"],
       [["Shift", "2"], "Zoom to the selection"],
       [["Shift", "F10"], "Board options (on a focused tab)"],
+      [["Ctrl", "Shift", "arrows"], "Move a board tab (when focused)"],
     ],
   },
   {

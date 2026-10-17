@@ -35,7 +35,7 @@ export const TOUR_STEPS: TourStep[] = [
   {
     id: "boards",
     title: "Boards live up here",
-    body: "Each tab is its own canvas, with its own background and saved position. The + button adds one; right-click a tab to rename it, tag it with a colour, or give it a background.",
+    body: "Each tab is its own canvas, with its own background and saved position. The + button adds one; drag a tab sideways to reorder; right-click one to rename it, tag it with a colour, or give it a background.",
     anchor: "boards",
     placement: "bottom",
   },
