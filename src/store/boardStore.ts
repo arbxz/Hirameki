@@ -404,7 +404,11 @@ export const useBoardStore = create<BoardState>((set, get) => {
         set({ loading: false });
       } catch (e) {
         initStarted = false; // allow a retry after a failed load
-        set({ loading: false, error: String(e) });
+        // Loudly: the canvas renders an ordinary empty board when there are no
+        // boards, so a silent failure here is indistinguishable from losing
+        // every board you own.
+        fail(e, "Couldn't open your boards");
+        set({ loading: false });
       }
     },
 
