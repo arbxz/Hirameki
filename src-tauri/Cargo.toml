@@ -1,6 +1,6 @@
 [package]
 name = "hirameki"
-version = "0.3.0"
+version = "0.3.1"
 description = "Hirameki — a visual inspiration mood board"
 authors = ["arbxz"]
 license = "MIT"
