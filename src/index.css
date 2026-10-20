@@ -120,7 +120,6 @@ button:disabled {
 button,
 summary,
 [role="menuitem"],
-.board-item,
 .swatch {
   transition:
     background-color 120ms ease,
@@ -129,6 +128,18 @@ summary,
     border-color 120ms ease,
     outline-color 120ms ease,
     transform 120ms ease;
+}
+
+/* Canvas items get the same rhythm but NOT on transform or size. Their
+   transform IS their geometry: SelectionLayer writes it on every drag/resize
+   frame, so animating it makes the image trail the cursor while moveable's
+   control box (untransitioned) tracks it exactly, and leaves the handles
+   offset once updateRect reads a mid-animation rect. Never animate a property
+   the manipulation layer drives. */
+.board-item {
+  transition:
+    box-shadow 120ms ease,
+    outline-color 120ms ease;
 }
 
 /* Pressed state: every control dips slightly, so a click is acknowledged even
