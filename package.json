@@ -1,7 +1,7 @@
 {
   "name": "hirameki",
   "private": true,
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "An infinite canvas for collecting images, arranging ideas, and setting the mood. Local-first desktop mood board.",
   "license": "MIT",
   "homepage": "https://github.com/arbxz/hirameki",
