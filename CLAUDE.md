@@ -43,6 +43,8 @@ Work is divided by capability, not just by layer. **Rust owns anything the WebVi
 
 **JS owns the database.** The SQLite connection lives on the front end via `tauri-plugin-sql` ([src/lib/db.ts](src/lib/db.ts), single shared `sqlite:inspo.db` connection). Rust never touches the DB. This is why export/import is a two-sided dance: JS dumps/applies the DB rows as an opaque `manifest` string, Rust embeds/restores the referenced asset files ([src/lib/exportImport.ts](src/lib/exportImport.ts) ↔ `bundle.rs`).
 
+A bundle carries a `version` and a `scope`, both `#[serde(default)]` so files written before they existed still parse. **`scope: "workspace"` is additive** — `remapIds` gives every row a fresh id and rewires the foreign keys (including the board id stored as the *value* of `board.activeId`), so the bundle lands as a new workspace without touching anything already here. Asset paths are deliberately *not* remapped: assets are keyed by relative path and restored to the same one, so two workspaces referencing one picture share a single file. **`scope: "all"` is the device-wide replace**, and is the only path that still wipes. A version-less bundle is treated as a workspace import, because its boards have no workspace to belong to and an old backup must not wipe a machine that has since grown several. Adding a table means updating `TABLE_COLUMNS`, `INSERT_ORDER` **and** `WIPE_ORDER`, or exports silently drop it and imports throw.
+
 Tauri commands are registered in [src-tauri/src/lib.rs](src-tauri/src/lib.rs): `save_image`, `download_image`, `export_data`, `import_data`. Migrations are also registered there and run automatically on DB load.
 
 ### Data model & persistence
@@ -63,6 +65,37 @@ Two data stores, each self-initializing (guard against React StrictMode's double
 - [src/store/toastStore.ts](src/store/toastStore.ts) — transient notifications (info / success / error / progress, optional single action) rendered by [Toaster.tsx](src/components/Toaster.tsx). Anything may call `toast.*`; auto-dismiss timers live outside React state and pause while the pointer or focus is on a toast.
 
 Theme, active board and other prefs persist to the `settings` table via [src/lib/settings.ts](src/lib/settings.ts).
+
+### Workspaces
+
+A **workspace** is the container above boards — separate sets of boards, like
+separate users of the app. Migration
+[007_workspaces.sql](src-tauri/migrations/007_workspaces.sql) adds the
+`workspaces` table and `boards.workspace_id`; everything below a board (items,
+groups, notes) reaches its workspace through the board and needed no change.
+
+- **A workspace owns its boards and its appearance.** `settings` was rebuilt
+  with a nullable `workspace_id` — `NULL` means global. Scoped: `theme.name`,
+  `theme.custom`, `board.activeId`. Global: `onboarding.seen`,
+  `workspace.activeId`, `workspace.defaultId`, `workspace.loadLast` (the three
+  that decide *which* workspace to open, so they cannot live inside one). The
+  scope is the second argument to `getSetting`/`setSetting`; omitting it means
+  global, which is why every pre-existing global caller reads unchanged.
+- **One init entry point.** `App.tsx` calls `workspaceStore.init()` only. It
+  resolves the workspace to open via the pure `resolveLaunchWorkspace`, then
+  calls `boardStore.openWorkspace(id)` and `themeStore.loadForWorkspace(id)`.
+  The arrow points one way — neither of those imports `workspaceStore` — so
+  there is no cycle and both stay testable on their own. `boardStore.init()`
+  and `themeStore.init()` no longer exist.
+- **`openWorkspace` runs on every switch**, not just at launch, so it has no
+  `initStarted` guard (StrictMode is handled a level up). It flushes pending
+  viewport/note writes and **drops undo history** before loading: entries close
+  over rows belonging to the workspace that recorded them.
+- **`repo.ts` is workspace-scoped where it has to be**: `listBoards`,
+  `createBoard` (including its `MAX(position)`) and `reorderBoards` all take a
+  workspace id. `loadOrCreateDefaultBoard` is gone — it inserted a board with
+  the literal id `"default"`, which cannot survive more than one workspace.
+  `loadOrCreateFirstBoard(workspaceId)` replaces it.
 
 ### Boards, tabs & backgrounds
 
@@ -147,6 +180,32 @@ Drop / paste / upload / image-link all funnel through [src/lib/ingest.ts](src/li
 ### Window shell
 
 Frameless window (`decorations: false`) with a custom [src/components/TitleBar.tsx](src/components/TitleBar.tsx) providing the window controls. Desktop-only plugins (updater + process-relaunch) are gated behind `#[cfg(desktop)]` in `lib.rs`. `checkForUpdates({ silent: true })` runs on launch ([src/lib/updater.ts](src/lib/updater.ts)); the updater endpoint and pubkey are in `tauri.conf.json`.
+
+## UI design system
+
+[`design-system/hirameki/MASTER.md`](design-system/hirameki/MASTER.md) is the design system — a
+drafting sheet: square corners, hairlines, mono UPPERCASE labels, one shared hover inversion,
+and colour-only motion. It is derived from
+[`design-system/oriie/MASTER.md`](design-system/oriie/MASTER.md) and records what was taken from
+it and what deliberately was not. **Read it before any UI change.**
+
+Three things from it that are load-bearing rather than cosmetic:
+
+- **Never put `transform` in a transition on anything the canvas drives.** An item's transform
+  *is* its geometry (`SelectionLayer` writes it every gesture frame), so animating it makes the
+  image trail the cursor and strands moveable's handles. This shipped in 0.3.1 and was fixed in
+  0.3.2.
+- **`--border` is decorative; `--line-strong` outlines controls.** The old single token scored
+  1.3–2.0:1 across the presets while being used as a button border.
+- **`--accent` carries text; `--accent-mark` does not.** Likewise `--danger` is per preset,
+  because the hardcoded `text-red-400` it replaced was 2.4:1 on the light themes.
+
+Tokens live in [src/lib/themes.ts](src/lib/themes.ts) (the seven presets and the custom editor)
+and [src/index.css](src/index.css) (shape, type and the shared primitives `.chrome`, `.btn`,
+`.ui-label`, `.sheet`, `.mark`, `.tab-active`). Adding a token means adding it to the `Theme`
+interface, `THEME_TOKENS`, **every** preset and `TOKEN_LABELS` in `SettingsPanel` — the theme
+store merges saved custom themes over the default preset, so existing custom themes backfill
+new tokens on their own.
 
 ## Conventions
 

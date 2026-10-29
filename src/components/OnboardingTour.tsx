@@ -138,7 +138,7 @@ export function OnboardingTour() {
       {rect && (
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute rounded-[4px]"
+          className="pointer-events-none absolute"
           style={{
             top: rect.top,
             left: rect.left,
@@ -172,7 +172,7 @@ export function OnboardingTour() {
 
         <div className="mt-4 flex items-center justify-between gap-2">
           <button
-            className="rounded-[3px] px-2 py-1.5 text-xs text-[var(--text-dim)] hover:bg-[var(--surface-hover)]"
+            className="px-2 py-1.5 text-xs text-[var(--text-dim)]"
             onClick={dismiss}
           >
             {last ? "Close" : "Skip"}
@@ -180,14 +180,14 @@ export function OnboardingTour() {
           <div className="flex items-center gap-1.5">
             {step > 0 && (
               <button
-                className="rounded-[3px] px-3 py-1.5 text-xs hover:bg-[var(--surface-hover)]"
+                className="px-3 py-1.5 text-xs"
                 onClick={back}
               >
                 Back
               </button>
             )}
             <button
-              className="rounded-[3px] bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--bg)] hover:opacity-90"
+              className="bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--bg)] hover:opacity-90"
               onClick={next}
             >
               {last ? "Start using it" : "Next"}

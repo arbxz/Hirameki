@@ -4,6 +4,7 @@ import { useBoardStore } from "../store/boardStore";
 import {
   NOTE_COLOR_KEYS,
   NOTE_PALETTE,
+  noteHeaderStyle,
   noteStyle,
   stepFontSize,
   type Note,
@@ -141,14 +142,13 @@ export function NoteView({ note, zoom }: { note: Note; zoom: number }) {
   const changeFont = (dir: 1 | -1) =>
     setNoteStyle(note.id, { fontSize: stepFontSize(note.fontSize, dir) });
 
-  const iconBtn =
-    "note-ctl grid place-items-center rounded hover:bg-black/10";
+  const iconBtn = "note-ctl grid place-items-center";
 
   return (
     <div
       ref={rootRef}
       data-note-id={note.id}
-      className="sticky-note absolute left-0 top-0 flex flex-col overflow-hidden rounded-[4px] shadow-lg"
+      className="sticky-note absolute left-0 top-0 flex flex-col overflow-hidden"
       style={{
         width,
         height,
@@ -170,6 +170,7 @@ export function NoteView({ note, zoom }: { note: Note; zoom: number }) {
           paddingLeft: 6 * cs,
           paddingRight: 6 * cs,
           touchAction: "none",
+          ...noteHeaderStyle(note.color, note.glass),
         }}
         onPointerDown={startGesture("drag")}
       >

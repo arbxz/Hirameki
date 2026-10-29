@@ -99,10 +99,10 @@ export function BackgroundModal({
             key={f}
             onClick={() => applyFit(f)}
             aria-pressed={fit === f}
-            className={`flex-1 rounded-[3px] px-2 py-1.5 text-xs capitalize ring-1 ${
+            className={`flex-1 px-2 py-1.5 text-xs capitalize ring-1 ${
               fit === f
                 ? "bg-[var(--accent)]/20 ring-[var(--accent)]"
-                : "ring-[var(--border)] hover:bg-[var(--surface-hover)]"
+                : "ring-[var(--line-strong)]"
             }`}
           >
             {f}
@@ -118,7 +118,7 @@ export function BackgroundModal({
         Image / GIF
       </div>
       <button
-        className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-[3px] bg-[var(--surface-hover)] px-2 py-1.5 text-xs hover:opacity-80 disabled:opacity-40"
+        className="mb-2 flex w-full items-center justify-center gap-1.5 bg-[var(--surface-hover)] px-2 py-1.5 text-xs hover:opacity-80 disabled:opacity-40"
         onClick={() => fileRef.current?.click()}
         disabled={busy}
       >
@@ -132,10 +132,10 @@ export function BackgroundModal({
           placeholder="Paste image/GIF link"
           aria-label="Image or GIF link"
           aria-describedby={sourceLabelId}
-          className="min-w-0 flex-1 rounded-[3px] bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--text)] outline-none ring-1 ring-[var(--border)] focus:ring-[var(--accent)]"
+          className="min-w-0 flex-1 bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--text)] outline-none ring-1 ring-[var(--line-strong)] focus:ring-[var(--accent)]"
         />
         <button
-          className="grid place-items-center rounded-[3px] bg-[var(--surface-hover)] px-2.5 hover:opacity-80 disabled:opacity-40"
+          className="grid place-items-center bg-[var(--surface-hover)] px-2.5 hover:opacity-80 disabled:opacity-40"
           onClick={() => void onApplyUrl()}
           disabled={busy || !looksLikeUrl(urlInput)}
           aria-label="Use this link as the background"
@@ -154,7 +154,7 @@ export function BackgroundModal({
 
       {hasBackground && (
         <button
-          className="mt-4 flex w-full items-center justify-center gap-1.5 rounded-[3px] px-2 py-1.5 text-xs text-red-400 ring-1 ring-red-500/30 hover:bg-red-500/15 disabled:opacity-40"
+          className="mt-4 flex w-full items-center justify-center gap-1.5 px-2 py-1.5 text-xs text-[var(--danger)] ring-1 ring-[var(--danger)] disabled:opacity-40"
           onClick={() => void onRemove()}
           disabled={busy}
         >

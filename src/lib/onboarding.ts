@@ -3,13 +3,13 @@
 // `data-tour` attribute, so the spotlight follows the UI instead of hard-coded
 // coordinates; a step whose anchor is missing simply shows centred.
 //
-// Deliberately five steps. The canvas itself teaches dragging and resizing
-// better than a caption can, so the tour covers only what is hidden: where
-// boards live, the ways images get in, that everything is undoable, how to get
-// back to a sensible zoom, and where the rest is written down.
+// Deliberately short. The canvas itself teaches dragging and resizing better
+// than a caption can, so the tour covers only what is hidden: what a workspace
+// is, where boards live, the ways images get in, that everything is undoable,
+// and how to get back to a sensible zoom.
 
 /** Bump when the tour changes enough that returning users should see it again. */
-export const TOUR_VERSION = "1";
+export const TOUR_VERSION = "2";
 
 /** settings-table key holding the last TOUR_VERSION the user finished or skipped. */
 export const TOUR_SEEN_KEY = "onboarding.seen";
@@ -31,6 +31,13 @@ export const TOUR_STEPS: TourStep[] = [
     title: "Welcome to Hirameki",
     body: "A canvas that never runs out of room, for collecting images and arranging them until the collection says something. Everything stays on this machine. This takes about thirty seconds.",
     placement: "center",
+  },
+  {
+    id: "workspace",
+    title: "Workspaces hold everything else",
+    body: "A workspace is a separate set of boards with its own look — one for work and one for yourself, say, or one per project. This cell switches between them, and the tabs to its right belong to whichever is open. You can keep just the one and forget this exists.",
+    anchor: "workspace",
+    placement: "bottom",
   },
   {
     id: "boards",

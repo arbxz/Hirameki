@@ -5,12 +5,11 @@ import { getDb } from "./db";
 // Data-access layer. Owns the snake_case (DB) <-> camelCase (app) mapping and
 // all SQL. Everything above this file works only in app-domain types.
 
-const DEFAULT_BOARD_ID = "default";
-
 // ---------- row mappers ----------
 
 interface BoardRow {
   id: string;
+  workspace_id: string;
   name: string;
   created_at: number;
   updated_at: number;
@@ -56,6 +55,7 @@ interface ItemRow {
 
 const toBoard = (r: BoardRow): Board => ({
   id: r.id,
+  workspaceId: r.workspace_id,
   name: r.name,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
@@ -102,48 +102,50 @@ const toItem = (r: ItemRow): Item => ({
 // ---------- boards ----------
 
 /**
- * Loads the single default board, creating it on first run. The insert is
- * idempotent (ON CONFLICT DO NOTHING) so two concurrent first-run inits — e.g.
- * React StrictMode double-invoking the store — can't collide on the primary key;
- * we then read back whichever row won.
+ * The first board of a workspace, created if the workspace has none.
+ *
+ * This replaced a `loadOrCreateDefaultBoard` that inserted a board with the
+ * literal id "default". A fixed id cannot survive more than one workspace —
+ * the second workspace would collide with the first — and it was also what
+ * made importing a bundle alongside existing boards impossible. Workspaces
+ * each get their own uuid-identified first board instead.
  */
-export async function loadOrCreateDefaultBoard(): Promise<Board> {
-  const db = await getDb();
-  await db.execute(
-    `INSERT INTO boards (id, name, created_at, updated_at, view_x, view_y, view_zoom, position)
-     VALUES ($1, $2, $3, $3, 0, 0, 1, 0)
-     ON CONFLICT(id) DO NOTHING`,
-    [DEFAULT_BOARD_ID, "My Board", Date.now()],
-  );
-  const rows = await db.select<BoardRow[]>(
-    "SELECT * FROM boards WHERE id = $1",
-    [DEFAULT_BOARD_ID],
-  );
-  return toBoard(rows[0]);
+export async function loadOrCreateFirstBoard(
+  workspaceId: string,
+): Promise<Board> {
+  const existing = await listBoards(workspaceId);
+  if (existing.length) return existing[0];
+  return createBoard(workspaceId, "My Board", null);
 }
 
-/** All boards in tab order (left to right). */
-export async function listBoards(): Promise<Board[]> {
+/** A workspace's boards, in tab order (left to right). */
+export async function listBoards(workspaceId: string): Promise<Board[]> {
   const db = await getDb();
   const rows = await db.select<BoardRow[]>(
-    "SELECT * FROM boards ORDER BY position ASC, created_at ASC",
+    "SELECT * FROM boards WHERE workspace_id = $1 ORDER BY position ASC, created_at ASC",
+    [workspaceId],
   );
   return rows.map(toBoard);
 }
 
-/** Create a new empty board placed after all existing tabs. */
+/** Create a new empty board placed after the workspace's existing tabs. */
 export async function createBoard(
+  workspaceId: string,
   name: string,
   color: string | null,
 ): Promise<Board> {
   const db = await getDb();
+  // Scoped: an unscoped MAX would place a new board after the highest position
+  // in *any* workspace, leaving gaps that reorder then has to close.
   const maxRows = await db.select<{ m: number | null }[]>(
-    "SELECT MAX(position) AS m FROM boards",
+    "SELECT MAX(position) AS m FROM boards WHERE workspace_id = $1",
+    [workspaceId],
   );
   const position = (maxRows[0]?.m ?? -1) + 1;
   const now = Date.now();
   const board: Board = {
     id: uuid(),
+    workspaceId,
     name: name.trim() || "Untitled",
     createdAt: now,
     updatedAt: now,
@@ -158,9 +160,9 @@ export async function createBoard(
   };
   await db.execute(
     `INSERT INTO boards
-       (id, name, created_at, updated_at, view_x, view_y, view_zoom, color, position)
-     VALUES ($1,$2,$3,$3,0,0,1,$4,$5)`,
-    [board.id, board.name, now, board.color, board.position],
+       (id, workspace_id, name, created_at, updated_at, view_x, view_y, view_zoom, color, position)
+     VALUES ($1,$2,$3,$4,$4,0,0,1,$5,$6)`,
+    [board.id, workspaceId, board.name, now, board.color, board.position],
   );
   return board;
 }
@@ -219,13 +221,18 @@ export async function deleteBoard(id: string): Promise<void> {
 }
 
 /** Persist a new tab order (array of board ids, left to right). */
-export async function reorderBoards(orderedIds: string[]): Promise<void> {
+export async function reorderBoards(
+  workspaceId: string,
+  orderedIds: string[],
+): Promise<void> {
   const db = await getDb();
   for (let i = 0; i < orderedIds.length; i++) {
-    await db.execute("UPDATE boards SET position = $1 WHERE id = $2", [
-      i,
-      orderedIds[i],
-    ]);
+    // The workspace_id in the WHERE is belt and braces: ids are uuids, but it
+    // means a stale id from another workspace can never renumber its tabs.
+    await db.execute(
+      "UPDATE boards SET position = $1 WHERE id = $2 AND workspace_id = $3",
+      [i, orderedIds[i], workspaceId],
+    );
   }
 }
 

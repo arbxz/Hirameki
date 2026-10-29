@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useBoardStore } from "../store/boardStore";
+import { useWorkspaceStore } from "../store/workspaceStore";
 
 // Custom frameless title bar (the OS one is disabled via decorations:false in
 // tauri.conf.json). The bar itself is the drag region (data-tauri-drag-region);
@@ -12,7 +13,23 @@ import { useBoardStore } from "../store/boardStore";
 // These are one shape language — a 1px stroke on a 10px box — and they take
 // their colour from the button, so every theme gets them right.
 
-const appWindow = getCurrentWindow();
+// Resolved lazily, and tolerantly. getCurrentWindow() throws when there is no
+// Tauri window, and at module scope that took the whole app down with it: the
+// front end served by `pnpm dev` rendered a blank page instead of the shell.
+// Outside Tauri the bar still draws and its controls simply do nothing, which
+// is what makes the UI reviewable in a plain browser.
+let cachedWindow: ReturnType<typeof getCurrentWindow> | null | undefined;
+
+function appWindow() {
+  if (cachedWindow === undefined) {
+    try {
+      cachedWindow = getCurrentWindow();
+    } catch {
+      cachedWindow = null;
+    }
+  }
+  return cachedWindow;
+}
 
 const GLYPH = {
   stroke: "currentColor",
@@ -51,14 +68,22 @@ export function TitleBar() {
   // notes and canvas items stay calm until they're the thing being used.
   const [focused, setFocused] = useState(true);
   const boardName = useBoardStore((s) => s.board?.name ?? null);
+  // Workspace then board: the title is the one place the whole path is visible,
+  // and with workspaces the board alone no longer says where you are.
+  const workspaceName = useWorkspaceStore((w) => {
+    const active = w.workspaces.find((x) => x.id === w.activeId);
+    return active?.name ?? null;
+  });
 
   useEffect(() => {
+    const w = appWindow();
+    if (!w) return;
     const unlisten: Array<() => void> = [];
-    void appWindow.isMaximized().then(setMaximized);
-    void appWindow.onResized(() => {
-      void appWindow.isMaximized().then(setMaximized);
+    void w.isMaximized().then(setMaximized);
+    void w.onResized(() => {
+      void w.isMaximized().then(setMaximized);
     }).then((u) => unlisten.push(u));
-    void appWindow.onFocusChanged(({ payload }) => setFocused(payload))
+    void w.onFocusChanged(({ payload }) => setFocused(payload))
       .then((u) => unlisten.push(u));
     return () => {
       for (const u of unlisten) u();
@@ -66,12 +91,12 @@ export function TitleBar() {
   }, []);
 
   const button =
-    "titlebar-control grid h-full w-11 place-items-center text-[var(--text-dim)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)]";
+    "titlebar-control grid h-full w-11 place-items-center text-[var(--text-dim)] hover:text-[var(--text)]";
 
   return (
     <div
       data-tauri-drag-region
-      onDoubleClick={() => void appWindow.toggleMaximize()}
+      onDoubleClick={() => void appWindow()?.toggleMaximize()}
       className={`flex h-8 shrink-0 select-none items-center justify-between border-b border-[var(--border)] bg-[var(--surface-solid)] pl-3 ${
         focused ? "" : "opacity-60"
       }`}
@@ -83,14 +108,27 @@ export function TitleBar() {
         <span data-tauri-drag-region className="text-[var(--text)]">
           Hirameki
         </span>
+        {workspaceName && (
+          <>
+            <span data-tauri-drag-region aria-hidden="true">
+              ·
+            </span>
+            <span data-tauri-drag-region className="max-w-40 truncate">
+              {workspaceName}
+            </span>
+          </>
+        )}
         {boardName && (
           <>
             <span data-tauri-drag-region aria-hidden="true">
               ·
             </span>
-            {/* The window title is the board you're on — the one piece of
-                state that was only visible as a highlighted tab. */}
-            <span data-tauri-drag-region className="max-w-56 truncate">
+            {/* The board reads brighter than the workspace holding it: both are
+                where you are, but the board is what you are looking at. */}
+            <span
+              data-tauri-drag-region
+              className="max-w-56 truncate text-[var(--text)]"
+            >
               {boardName}
             </span>
           </>
@@ -101,7 +139,7 @@ export function TitleBar() {
         <button
           aria-label="Minimize"
           title="Minimize"
-          onClick={() => void appWindow.minimize()}
+          onClick={() => void appWindow()?.minimize()}
           className={button}
         >
           <Glyph kind="minimize" />
@@ -109,7 +147,7 @@ export function TitleBar() {
         <button
           aria-label={maximized ? "Restore" : "Maximize"}
           title={maximized ? "Restore" : "Maximize"}
-          onClick={() => void appWindow.toggleMaximize()}
+          onClick={() => void appWindow()?.toggleMaximize()}
           className={button}
         >
           <Glyph kind={maximized ? "restore" : "maximize"} />
@@ -117,11 +155,11 @@ export function TitleBar() {
         <button
           aria-label="Close"
           title="Close"
-          onClick={() => void appWindow.close()}
+          onClick={() => void appWindow()?.close()}
           // Red on hover is the one place the app leaves its palette: closing
           // is the only irreversible control in the window, and every desktop
           // signals it the same way.
-          className="titlebar-control grid h-full w-11 place-items-center text-[var(--text-dim)] hover:bg-red-600 hover:text-white"
+          className="titlebar-control danger grid h-full w-11 place-items-center text-[var(--text-dim)]"
         >
           <CloseGlyph />
         </button>

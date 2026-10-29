@@ -27,6 +27,7 @@ import { NoteView } from "./NoteView";
 import { SelectionLayer } from "./SelectionLayer";
 import { BoardBackground } from "./BoardBackground";
 import { BoardTabs } from "./BoardTabs";
+import { WorkspaceCell } from "./WorkspaceCell";
 import { ShortcutsModal } from "./ShortcutsModal";
 import { useMenuKeyboard } from "./useMenuKeyboard";
 import { boundsOf, fitView, type Box } from "../lib/geometry";
@@ -112,7 +113,7 @@ async function withIngestFeedback(
 /** Inline keycap for the empty-state hints. */
 function Kbd({ children }: { children: React.ReactNode }) {
   return (
-    <span className="ui-mono mx-0.5 rounded-[3px] border border-[var(--border)] bg-[var(--surface)] px-1 py-px text-[var(--text)]">
+    <span className="ui-mono mx-0.5 border border-[var(--border)] bg-[var(--surface)] px-1 py-px text-[var(--text)]">
       {children}
     </span>
   );
@@ -128,7 +129,6 @@ export function Canvas() {
   const items = useBoardStore((s) => s.items);
   const notes = useBoardStore((s) => s.notes);
   const loading = useBoardStore((s) => s.loading);
-  const init = useBoardStore((s) => s.init);
   const setView = useBoardStore((s) => s.setView);
   const addItem = useBoardStore((s) => s.addItem);
   const addNote = useBoardStore((s) => s.addNote);
@@ -447,11 +447,6 @@ export function Canvas() {
     return () => window.removeEventListener("keydown", onKey);
   }, [noteMenu]);
 
-  // Load the board on mount.
-  useEffect(() => {
-    void init();
-  }, [init]);
-
   // Flush pending viewport + note-text writes when the window is closing so the
   // next launch restores the exact last position and note contents.
   useEffect(() => {
@@ -648,7 +643,7 @@ export function Canvas() {
 
   // shared chrome button styling
   const chip =
-    "grid h-8 w-8 place-items-center rounded hover:bg-[var(--surface-hover)]";
+    "grid h-8 w-8 place-items-center";
 
   return (
     <div
@@ -790,7 +785,7 @@ export function Canvas() {
       {/* drop overlay */}
       {dragOver && (
         <div
-          className="pointer-events-none absolute inset-3 z-10 grid place-items-center rounded-2xl border-2 border-dashed bg-[var(--accent)]/10"
+          className="pointer-events-none absolute inset-3 z-10 grid place-items-center border-2 border-dashed bg-[var(--accent)]/10"
           style={{ borderColor: "var(--accent)" }}
         >
           <span className="chrome-solid px-4 py-2 text-sm text-[var(--text)]">
@@ -802,10 +797,11 @@ export function Canvas() {
       {/* toolbar */}
       <div className="ui-chrome absolute left-4 top-4 flex max-w-[calc(100vw-2rem)] flex-wrap items-center gap-2">
         {/* board switcher */}
+        <WorkspaceCell />
         <BoardTabs />
         <button
           data-tour="upload"
-          className="chrome flex h-10 items-center gap-1.5 px-3 text-xs text-[var(--text)] hover:bg-[var(--surface-hover)]"
+          className="chrome flex h-10 items-center gap-1.5 px-3 text-xs text-[var(--text)]"
           onClick={() => fileInputRef.current?.click()}
         >
           <ImagePlus size={14} />
@@ -873,7 +869,7 @@ export function Canvas() {
               </button>
             )}
             <button
-              className="grid h-8 w-8 place-items-center rounded text-red-400 hover:bg-red-500/20"
+              className="grid h-8 w-8 place-items-center text-[var(--danger)]"
               onClick={() => deleteItems(selectedIds)}
               aria-label="Delete selection"
               title="Delete (Del)"
@@ -882,7 +878,10 @@ export function Canvas() {
             </button>
           </div>
         )}
-        <span className="chrome ui-mono flex h-10 select-none items-center px-2.5 text-[11px] text-[var(--text-dim)]">
+        <span className="chrome ui-mono flex h-10 select-none items-center gap-2 px-2.5 text-[11px] text-[var(--text-dim)]">
+          {/* The drafting sheet tags a read-out with a small vermilion square
+              rather than a word. Decorative, so it is hidden from readers. */}
+          <span className="mark" aria-hidden="true" />
           {loading
             ? "loading…"
             : `${items.length} items${
@@ -914,7 +913,7 @@ export function Canvas() {
         </button>
         <div className="relative">
           <button
-            className="ui-mono h-8 min-w-16 rounded-[3px] px-2 text-xs tabular-nums hover:bg-[var(--surface-hover)]"
+            className="ui-mono h-8 min-w-16 px-2 text-xs tabular-nums"
             onClick={() => setZoomMenu((o) => !o)}
             aria-haspopup="menu"
             aria-expanded={zoomMenu}
@@ -948,7 +947,7 @@ export function Canvas() {
                     key={opt.label}
                     role="menuitem"
                     disabled={opt.disabled}
-                    className="flex w-full items-center justify-between px-3 py-1.5 hover:bg-[var(--surface-hover)] focus-visible:bg-[var(--surface-hover)] disabled:opacity-40 disabled:hover:bg-transparent"
+                    className="flex w-full items-center justify-between px-3 py-1.5 focus-visible:bg-[var(--surface-hover)] disabled:opacity-40 disabled:hover:bg-transparent"
                     onClick={() => {
                       opt.run();
                       setZoomMenu(false);
@@ -1001,7 +1000,7 @@ export function Canvas() {
             style={{ left: noteMenu.screenX, top: noteMenu.screenY }}
           >
             <button
-              className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-[var(--surface-hover)]"
+              className="flex w-full items-center gap-2 px-3 py-1.5"
               onClick={() => {
                 void addNote(noteMenu.world);
                 setNoteMenu(null);

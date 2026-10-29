@@ -28,7 +28,7 @@ vi.mock("../lib/repo", () => ({
   listBoards: vi.fn(async () => []),
   listGroups: vi.fn(async () => []),
   listItems: vi.fn(async () => []),
-  loadOrCreateDefaultBoard: vi.fn(),
+  loadOrCreateFirstBoard: vi.fn(),
   reorderBoards: vi.fn(async () => {}),
   restoreGroup: vi.fn(async () => {}),
   saveBoardView: vi.fn(async () => {}),
@@ -63,6 +63,7 @@ const { useBoardStore } = await import("./boardStore");
 
 const board: Board = {
   id: "b1",
+  workspaceId: "ws1",
   name: "Test",
   createdAt: 0,
   updatedAt: 0,

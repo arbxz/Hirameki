@@ -193,12 +193,10 @@ export function BoardTabs() {
                   y: r.bottom + 6,
                 });
               }}
-                className={`flex h-8 items-center gap-1.5 rounded-[3px] px-2.5 text-xs transition-colors ${
+                className={`flex h-8 items-center gap-1.5 px-2.5 text-xs transition-colors ${
                   dragId === b.id ? "opacity-50" : ""
                 } ${
-                  active
-                    ? "bg-[var(--accent)]/20 text-[var(--text)] hover:bg-[var(--accent)]/30"
-                    : "text-[var(--text-dim)] hover:bg-[var(--surface-hover)]"
+                  active ? "tab-active" : "text-[var(--text-dim)]"
                 }`}
                 aria-label={`${b.name} board${active ? " (current)" : ""}`}
                 aria-current={active ? "true" : undefined}
@@ -208,7 +206,7 @@ export function BoardTabs() {
                 title={`${b.name} — drag to reorder · right-click or Shift+F10 for options`}
               >
                 <span
-                  className="h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-black/20"
+                  className="h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-[var(--line-strong)]"
                   style={{ background: b.color ?? "transparent" }}
                 />
                 <span className="max-w-28 truncate">{b.name}</span>
@@ -219,7 +217,7 @@ export function BoardTabs() {
 
         <button
           onClick={() => setEditing({ mode: "create" })}
-          className="grid h-8 w-8 shrink-0 place-items-center rounded text-[var(--text-dim)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
+          className="grid h-8 w-8 shrink-0 place-items-center text-[var(--text-dim)] hover:text-[var(--text)]"
           aria-label="New board"
           title="New board"
         >
@@ -243,7 +241,7 @@ export function BoardTabs() {
               <>
                 <button
                   role="menuitem"
-                  className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-[var(--surface-hover)] focus-visible:bg-[var(--surface-hover)]"
+                  className="flex w-full items-center gap-2 px-3 py-1.5 focus-visible:bg-[var(--surface-hover)]"
                   onClick={() => {
                     setMenu(null);
                     setEditing({ mode: "edit", board: b });
@@ -254,7 +252,7 @@ export function BoardTabs() {
                 <button
                   role="menuitem"
                   disabled={boards[0]?.id === b.id}
-                  className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-[var(--surface-hover)] focus-visible:bg-[var(--surface-hover)] disabled:opacity-40"
+                  className="flex w-full items-center gap-2 px-3 py-1.5 focus-visible:bg-[var(--surface-hover)] disabled:opacity-40"
                   onClick={() => {
                     setMenu(null);
                     moveBoard(b.id, -1);
@@ -265,7 +263,7 @@ export function BoardTabs() {
                 <button
                   role="menuitem"
                   disabled={boards[boards.length - 1]?.id === b.id}
-                  className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-[var(--surface-hover)] focus-visible:bg-[var(--surface-hover)] disabled:opacity-40"
+                  className="flex w-full items-center gap-2 px-3 py-1.5 focus-visible:bg-[var(--surface-hover)] disabled:opacity-40"
                   onClick={() => {
                     setMenu(null);
                     moveBoard(b.id, 1);
@@ -275,7 +273,7 @@ export function BoardTabs() {
                 </button>
                 <button
                   role="menuitem"
-                  className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-[var(--surface-hover)] focus-visible:bg-[var(--surface-hover)]"
+                  className="flex w-full items-center gap-2 px-3 py-1.5 focus-visible:bg-[var(--surface-hover)]"
                   onClick={() => {
                     setMenu(null);
                     setEditing({ mode: "background", board: b });
@@ -285,7 +283,7 @@ export function BoardTabs() {
                 </button>
                 <button
                   role="menuitem"
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-red-400 hover:bg-red-500/20 disabled:opacity-40"
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-[var(--danger)] disabled:opacity-40"
                   disabled={boards.length <= 1}
                   // Say why it's greyed out instead of leaving a dead control.
                   title={

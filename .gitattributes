@@ -1,0 +1,14 @@
+# Migrations are checksummed, so their bytes are part of the contract.
+#
+# sqlx records a SHA-384 of each migration's text in `_sqlx_migrations` when it
+# applies it, and refuses to run anything further if a previously applied file
+# no longer hashes the same — "migration 1 was previously applied but has been
+# modified". `include_str!` embeds whatever is in the working tree at build
+# time, so the checksum depends on how git checked the file out.
+#
+# Every released build so far was compiled on a Windows runner with
+# core.autocrlf=true, which means installs in the wild recorded CRLF checksums.
+# Pin the checkout to CRLF so local builds, CI and those existing installs all
+# agree. Switching this to LF would break the next upgrade for everyone who
+# already has the app.
+src-tauri/migrations/*.sql text eol=crlf

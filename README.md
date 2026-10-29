@@ -52,7 +52,12 @@ file's hash against the release notes if you prefer. Updates after that are
   finished without the mouse.
 - Group items, reorder front to back, and select everything with `Ctrl`+`A`.
 
-**Boards and notes**
+**Workspaces and boards**
+- Workspaces are separate sets of boards — one for work and one for yourself,
+  say, or one per project. Each keeps its own boards and its own theme, and the
+  switcher sits to the left of the board tabs.
+- Launch opens whichever workspace you used last, or always the same one if you
+  prefer; the choice is in Settings.
 - Tabs for as many boards as you like, each with a colour tag, its own saved
   pan and zoom, and an optional fixed background image or GIF. Drag a tab to
   reorder it.
@@ -62,10 +67,13 @@ file's hash against the release notes if you prefer. Updates after that are
 **Everything else**
 - Undo and redo for every canvas action, with an undo button on the toast that
   reports it.
-- Themes: Dark, Light, Sepia, Paper, Midnight and Forest, plus a custom colour
-  editor. Every colour in the UI is a theme token.
-- Export a board — images and all — into one file, and import it on another
-  machine.
+- Themes: Dark, Light, Sepia, Paper, Midnight, Forest and Drafting, plus a
+  custom colour editor. Every colour in the UI is a theme token, and each
+  workspace remembers its own.
+- Export — images and all — into one file. A workspace export imports anywhere
+  as a *new* workspace, leaving whatever is already there alone; a whole-app
+  export is a full backup that restores over the top. Files exported by older
+  versions still import, as a new workspace.
 - Press `?` for the full keyboard reference.
 - Signed auto-updates: the app checks on launch and installs in place.
 
@@ -76,7 +84,7 @@ folder. Nothing is uploaded anywhere.
 
 | What | Where (Windows) |
 | --- | --- |
-| Boards, notes, settings | `%APPDATA%\com.arbxz.hirameki\inspo.db` |
+| Workspaces, boards, notes, settings | `%APPDATA%\com.arbxz.hirameki\inspo.db` |
 | Imported images | `%APPDATA%\com.arbxz.hirameki\images\` |
 
 The app makes exactly two kinds of network request: downloading an image URL

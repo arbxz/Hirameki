@@ -58,7 +58,7 @@ const GROUPS: { title: string; rows: [string[], string][] }[] = [
 
 function Key({ children }: { children: React.ReactNode }) {
   return (
-    <kbd className="ui-mono rounded-[3px] border border-[var(--border)] bg-[var(--surface)] px-1.5 py-0.5 text-[10px] text-[var(--text)]">
+    <kbd className="ui-mono border border-[var(--border)] bg-[var(--surface)] px-1.5 py-0.5 text-[10px] text-[var(--text)]">
       {children}
     </kbd>
   );
