@@ -148,6 +148,32 @@ Drop / paste / upload / image-link all funnel through [src/lib/ingest.ts](src/li
 
 Frameless window (`decorations: false`) with a custom [src/components/TitleBar.tsx](src/components/TitleBar.tsx) providing the window controls. Desktop-only plugins (updater + process-relaunch) are gated behind `#[cfg(desktop)]` in `lib.rs`. `checkForUpdates({ silent: true })` runs on launch ([src/lib/updater.ts](src/lib/updater.ts)); the updater endpoint and pubkey are in `tauri.conf.json`.
 
+## UI design system
+
+[`design-system/hirameki/MASTER.md`](design-system/hirameki/MASTER.md) is the design system — a
+drafting sheet: square corners, hairlines, mono UPPERCASE labels, one shared hover inversion,
+and colour-only motion. It is derived from
+[`design-system/oriie/MASTER.md`](design-system/oriie/MASTER.md) and records what was taken from
+it and what deliberately was not. **Read it before any UI change.**
+
+Three things from it that are load-bearing rather than cosmetic:
+
+- **Never put `transform` in a transition on anything the canvas drives.** An item's transform
+  *is* its geometry (`SelectionLayer` writes it every gesture frame), so animating it makes the
+  image trail the cursor and strands moveable's handles. This shipped in 0.3.1 and was fixed in
+  0.3.2.
+- **`--border` is decorative; `--line-strong` outlines controls.** The old single token scored
+  1.3–2.0:1 across the presets while being used as a button border.
+- **`--accent` carries text; `--accent-mark` does not.** Likewise `--danger` is per preset,
+  because the hardcoded `text-red-400` it replaced was 2.4:1 on the light themes.
+
+Tokens live in [src/lib/themes.ts](src/lib/themes.ts) (the seven presets and the custom editor)
+and [src/index.css](src/index.css) (shape, type and the shared primitives `.chrome`, `.btn`,
+`.ui-label`, `.sheet`, `.mark`, `.tab-active`). Adding a token means adding it to the `Theme`
+interface, `THEME_TOKENS`, **every** preset and `TOKEN_LABELS` in `SettingsPanel` — the theme
+store merges saved custom themes over the default preset, so existing custom themes backfill
+new tokens on their own.
+
 ## Conventions
 
 - Path aliases: none — relative imports throughout.

@@ -50,15 +50,21 @@ export type NoteColorKey =
   | "blue"
   | "gray";
 
-// Fixed Windows-sticky-note-style palette: light backgrounds with dark text so
-// the (uncolored/accent) default stays theme-following while these stay constant.
+// Coloured paper stock, not highlighter. The keys are what's stored, so these
+// values can be retuned without touching a single saved note.
+//
+// The old palette was Tailwind 200s — candy-bright against a board of images,
+// and louder than anything else in a UI built from paper and hairlines. These
+// are the same six hues taken down to the weight of index-card stock, so a note
+// reads as something clipped to the sheet rather than stuck on the screen.
+// Every pair is ~10:1, so note text is legible whatever theme is underneath.
 export const NOTE_PALETTE: Record<NoteColorKey, { bg: string; text: string }> = {
-  yellow: { bg: "#fde68a", text: "#442a00" },
-  green: { bg: "#bbf7d0", text: "#0f3d24" },
-  pink: { bg: "#fbcfe8", text: "#4a1136" },
-  purple: { bg: "#e9d5ff", text: "#3b1466" },
-  blue: { bg: "#bfdbfe", text: "#10305f" },
-  gray: { bg: "#e5e7eb", text: "#1f2937" },
+  yellow: { bg: "#efe3bf", text: "#3d3115" },
+  green: { bg: "#d6e3d2", text: "#1f3324" },
+  pink: { bg: "#efd7d7", text: "#44201f" },
+  purple: { bg: "#ded8e8", text: "#2e2440" },
+  blue: { bg: "#d3dee8", text: "#1b2d3d" },
+  gray: { bg: "#e2e1dc", text: "#2b2b28" },
 };
 
 export const NOTE_COLOR_KEYS = Object.keys(NOTE_PALETTE) as NoteColorKey[];
@@ -102,35 +108,63 @@ export function noteStyle(
   glass: boolean,
 ): CSSProperties {
   if (color === null) {
-    // Accent-following default.
+    // Accent-following default: the plain sheet. Paper and ink from the active
+    // theme, so an uncoloured note restyles with it.
     return glass
       ? {
-          background: "color-mix(in srgb, var(--accent) 22%, transparent)",
+          background: "color-mix(in srgb, var(--surface-solid) 55%, transparent)",
           color: "var(--text)",
-          border: "1px solid color-mix(in srgb, var(--accent) 40%, transparent)",
+          border: "1px solid var(--accent)",
           backdropFilter: "blur(6px)",
           WebkitBackdropFilter: "blur(6px)",
         }
       : {
-          background: "color-mix(in srgb, var(--accent) 20%, var(--surface-solid))",
+          background: "var(--surface-solid)",
           color: "var(--text)",
-          border: "1px solid color-mix(in srgb, var(--accent) 45%, transparent)",
+          border: "1px solid var(--accent)",
         };
   }
   const { bg, text } = NOTE_PALETTE[color];
+  // The rule is the card's own ink, thinned — a hairline in the same family,
+  // rather than the old darkened-background edge that went muddy on every hue.
+  const line = `color-mix(in srgb, ${text} 32%, ${bg})`;
   return glass
     ? {
-        background: `color-mix(in srgb, ${bg} 45%, transparent)`,
+        background: `color-mix(in srgb, ${bg} 55%, transparent)`,
         color: text,
-        border: `1px solid color-mix(in srgb, ${bg} 65%, transparent)`,
+        border: `1px solid ${line}`,
         backdropFilter: "blur(6px)",
         WebkitBackdropFilter: "blur(6px)",
       }
     : {
         background: bg,
         color: text,
-        border: `1px solid color-mix(in srgb, ${bg} 70%, #000)`,
+        border: `1px solid ${line}`,
       };
+}
+
+/**
+ * The note's title block: the header strip is one step toward the card's ink,
+ * closed by a hairline, so the controls sit in a ruled cell instead of floating
+ * over the text. Mirrors the way chrome separates areas with a line, not a gap.
+ */
+export function noteHeaderStyle(
+  color: NoteColorKey | null,
+  glass: boolean,
+): CSSProperties {
+  if (color === null) {
+    return {
+      background: glass
+        ? "transparent"
+        : "color-mix(in srgb, var(--accent) 12%, var(--surface-solid))",
+      borderBottom: "1px solid color-mix(in srgb, var(--accent) 45%, transparent)",
+    };
+  }
+  const { bg, text } = NOTE_PALETTE[color];
+  return {
+    background: glass ? "transparent" : `color-mix(in srgb, ${text} 9%, ${bg})`,
+    borderBottom: `1px solid color-mix(in srgb, ${text} 22%, ${bg})`,
+  };
 }
 
 // ---------- row mapper ----------

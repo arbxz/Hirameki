@@ -28,10 +28,13 @@ const TOKEN_LABELS: Record<keyof Theme, string> = {
   surface: "Panel",
   surfaceSolid: "Panel (solid)",
   surfaceHover: "Hover",
-  border: "Border",
+  border: "Rule",
+  lineStrong: "Control outline",
   text: "Text",
   textDim: "Text (dim)",
   accent: "Accent",
+  accentMark: "Mark",
+  danger: "Delete",
   shadow: "Shadow",
 };
 
@@ -106,7 +109,7 @@ export function SettingsPanel() {
   return (
     <div className="ui-chrome absolute right-4 top-4 flex flex-col items-end gap-2">
       <button
-        className="grid h-10 w-10 place-items-center rounded-[3px] bg-[var(--surface)] text-[var(--text)] shadow-lg ring-1 ring-[var(--border)] backdrop-blur hover:bg-[var(--surface-hover)]"
+        className="grid h-10 w-10 place-items-center bg-[var(--surface)] text-[var(--text)] ring-1 ring-[var(--line-strong)]"
         onClick={() => void addNote()}
         aria-label="Add note"
         title="Add note"
@@ -115,7 +118,7 @@ export function SettingsPanel() {
       </button>
       <button
         ref={toggleRef}
-        className="grid h-10 w-10 place-items-center rounded-[3px] bg-[var(--surface)] text-[var(--text)] shadow-lg ring-1 ring-[var(--border)] backdrop-blur hover:bg-[var(--surface-hover)]"
+        className="grid h-10 w-10 place-items-center bg-[var(--surface)] text-[var(--text)] ring-1 ring-[var(--line-strong)]"
         onClick={() => setOpen((o) => !o)}
         aria-label={open ? "Close settings" : "Settings"}
         aria-expanded={open}
@@ -125,9 +128,9 @@ export function SettingsPanel() {
       </button>
 
       {open && (
-        <div className="chrome w-72 p-3 text-[var(--text)]">
+        <div className="chrome sheet w-72 p-3 text-[var(--text)]">
           {/* themes */}
-          <div className="ui-label mb-1 flex items-center gap-1.5">
+          <div className="ui-label numbered mb-1 flex items-center gap-1.5">
             <Palette size={14} /> Theme
           </div>
           <div className="mb-3 grid grid-cols-3 gap-1.5">
@@ -136,15 +139,15 @@ export function SettingsPanel() {
                 key={presetName}
                 onClick={() => selectPreset(presetName)}
                 aria-pressed={name === presetName}
-                className={`flex flex-col items-center gap-1 rounded-[3px] p-2 ring-1 ${
+                className={`flex flex-col items-center gap-1 p-2 ring-1 ${
                   name === presetName
-                    ? "ring-[var(--accent)] hover:bg-[var(--surface-hover)]"
-                    : "ring-[var(--border)] hover:bg-[var(--surface-hover)]"
+                    ? "ring-[var(--accent)]"
+                    : "ring-[var(--line-strong)]"
                 }`}
                 title={presetName}
               >
                 <span
-                  className="h-6 w-full rounded"
+                  className="h-6 w-full"
                   style={{
                     background: theme.bg,
                     boxShadow: `inset 0 0 0 2px ${theme.accent}`,
@@ -174,14 +177,14 @@ export function SettingsPanel() {
                       type="text"
                       value={custom[token]}
                       onChange={(e) => setCustomToken(token, e.target.value)}
-                      className="w-28 rounded bg-[var(--surface-solid)] px-1.5 py-0.5 text-[10px] text-[var(--text)] outline-none ring-1 ring-[var(--border)] focus:ring-[var(--accent)]"
+                      className="w-28 bg-[var(--surface-solid)] px-1.5 py-0.5 text-[10px] text-[var(--text)] outline-none ring-1 ring-[var(--line-strong)] focus:ring-[var(--accent)]"
                     />
                     <input
                       type="color"
                       value={hexForPicker(custom[token])}
                       aria-label={`${TOKEN_LABELS[token]} colour picker`}
                       onChange={(e) => setCustomToken(token, e.target.value)}
-                      className="h-6 w-6 cursor-pointer rounded border-0 bg-transparent p-0"
+                      className="h-6 w-6 cursor-pointer border-0 bg-transparent p-0"
                     />
                   </span>
                 </label>
@@ -191,12 +194,12 @@ export function SettingsPanel() {
 
           {/* export / import */}
           <div className="border-t border-[var(--border)] pt-3">
-            <div className="ui-label mb-1.5">Board data</div>
+            <div className="ui-label numbered mb-1.5">Board data</div>
             <div className="flex gap-1.5">
               <button
                 onClick={doExport}
                 disabled={busy !== null}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-[3px] bg-[var(--surface-hover)] px-2 py-1.5 text-xs hover:opacity-80 disabled:opacity-40"
+                className="btn flex-1 disabled:opacity-40"
               >
                 <Download size={14} />
                 {busy === "export" ? "Exporting…" : "Export"}
@@ -205,7 +208,7 @@ export function SettingsPanel() {
                 // Import wipes every board before restoring, so it asks first.
                 onClick={() => setConfirmImport(true)}
                 disabled={busy !== null}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-[3px] bg-[var(--surface-hover)] px-2 py-1.5 text-xs hover:opacity-80 disabled:opacity-40"
+                className="btn flex-1 disabled:opacity-40"
               >
                 <Upload size={14} />
                 {busy === "import" ? "Importing…" : "Import"}
@@ -219,20 +222,20 @@ export function SettingsPanel() {
 
           {/* app / updates */}
           <div className="mt-3 border-t border-[var(--border)] pt-3">
-            <div className="ui-label mb-1.5">App</div>
+            <div className="ui-label numbered mb-1.5">App</div>
             <button
               onClick={() => {
                 setOpen(false);
                 startTour();
               }}
-              className="mb-1.5 flex w-full items-center justify-center gap-1.5 rounded-[3px] bg-[var(--surface-hover)] px-2 py-1.5 text-xs hover:opacity-80"
+              className="btn mb-1.5 w-full"
             >
               <Compass size={14} />
               Quick tour
             </button>
             <button
               onClick={() => setShortcuts(true)}
-              className="mb-1.5 flex w-full items-center justify-center gap-1.5 rounded-[3px] bg-[var(--surface-hover)] px-2 py-1.5 text-xs hover:opacity-80"
+              className="btn mb-1.5 w-full"
             >
               <Keyboard size={14} />
               Keyboard shortcuts
@@ -240,7 +243,7 @@ export function SettingsPanel() {
             <button
               onClick={doCheckUpdates}
               disabled={checking}
-              className="flex w-full items-center justify-center gap-1.5 rounded-[3px] bg-[var(--surface-hover)] px-2 py-1.5 text-xs hover:opacity-80 disabled:opacity-40"
+              className="btn w-full"
             >
               <RefreshCw size={14} className={checking ? "animate-spin" : ""} />
               {checking ? "Checking…" : "Check for updates"}

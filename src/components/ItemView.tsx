@@ -7,6 +7,12 @@ import { itemTransform } from "./itemTransform";
 // CSS transform (translate + rotate) on an element anchored at 0,0 — this is
 // react-moveable's canonical model and behaves correctly inside the zoomed
 // viewport. Placeholder items (no filePath) keep a colored box.
+//
+// Edge, hover, group and selection are all one `outline` in index.css, never a
+// ring or a border: outline is drawn outside the box and costs no layout, so
+// the four states can't resize the image between them. Grouped is dashed
+// rather than a second colour — the drafting sheet's way of saying "annotation
+// about this thing" instead of spending another hue.
 
 function colorFor(id: string): string {
   let h = 0;
@@ -40,12 +46,8 @@ export function ItemView({
   return (
     <div
       data-item-id={item.id}
-      className={`board-item absolute left-0 top-0 overflow-hidden rounded-[3px] shadow-lg ${
-        selected
-          ? "is-selected ring-2"
-          : item.groupId
-            ? "ring-2 ring-violet-400/60"
-            : "ring-1 ring-black/20"
+      className={`board-item absolute left-0 top-0 overflow-hidden ${
+        selected ? "is-selected" : item.groupId ? "is-grouped" : ""
       }`}
       style={{
         width: item.width,
@@ -53,7 +55,6 @@ export function ItemView({
         transform: itemTransform(item.x, item.y, item.rotation),
         transformOrigin: "0 0",
         background: item.filePath ? "#1a1a1a" : colorFor(item.id),
-        ...(selected ? { boxShadow: `0 0 0 2px var(--accent)` } : null),
       }}
     >
       {src && (

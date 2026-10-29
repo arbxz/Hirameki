@@ -101,7 +101,7 @@ export function Modal({
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-sm font-semibold">{title}</h2>
             <button
-              className="grid h-6 w-6 place-items-center rounded text-[var(--text-dim)] hover:bg-[var(--surface-hover)]"
+              className="grid h-6 w-6 place-items-center text-[var(--text-dim)]"
               onClick={onClose}
               aria-label="Close"
             >
@@ -142,16 +142,16 @@ export function ConfirmModal({
             reflexive Enter into the very action the dialog exists to guard. */}
         <button
           autoFocus
-          className="rounded-[3px] px-3 py-1.5 text-xs text-[var(--text-dim)] hover:bg-[var(--surface-hover)]"
+          className="px-3 py-1.5 text-xs text-[var(--text-dim)]"
           onClick={onClose}
         >
           Cancel
         </button>
         <button
           // Non-danger: canvas-coloured text on the accent (see BoardModal).
-          className={`rounded-[3px] px-3 py-1.5 text-xs font-medium ${
+          className={`px-3 py-1.5 text-xs font-medium ${
             danger
-              ? "bg-red-600 text-white hover:bg-red-500"
+              ? "danger ring-1 ring-[var(--danger)] text-[var(--danger)]"
               : "bg-[var(--accent)] text-[var(--bg)] hover:opacity-90"
           }`}
           onClick={onConfirm}

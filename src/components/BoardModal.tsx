@@ -81,7 +81,7 @@ export function BoardModal({
           if (e.key === "Enter") submit();
         }}
         placeholder="Board name"
-        className="mb-4 w-full rounded-[3px] bg-[var(--surface)] px-2.5 py-1.5 text-sm text-[var(--text)] outline-none ring-1 ring-[var(--border)] focus:ring-[var(--accent)]"
+        className="mb-4 w-full bg-[var(--surface)] px-2.5 py-1.5 text-sm text-[var(--text)] outline-none ring-1 ring-[var(--line-strong)] focus:ring-[var(--accent)]"
       />
 
       <div
@@ -97,7 +97,7 @@ export function BoardModal({
       >
         <button
           onClick={() => setColor(null)}
-          className="swatch grid h-6 w-6 place-items-center rounded-full ring-1 ring-[var(--border)] hover:ring-[var(--text-dim)]"
+          className="swatch grid h-6 w-6 place-items-center rounded-full ring-1 ring-[var(--line-strong)] hover:ring-[var(--text-dim)]"
           style={color === null ? { boxShadow: SELECTED_RING } : undefined}
           aria-label="No tag"
           aria-pressed={color === null}
@@ -123,7 +123,7 @@ export function BoardModal({
 
       <div className="flex justify-end gap-2">
         <button
-          className="rounded-[3px] px-3 py-1.5 text-xs text-[var(--text-dim)] hover:bg-[var(--surface-hover)]"
+          className="px-3 py-1.5 text-xs text-[var(--text-dim)]"
           onClick={onCancel}
         >
           Cancel
@@ -132,7 +132,7 @@ export function BoardModal({
             accent (white on the Dark sky-400 is 2.1:1), and every preset's
             bg sits at 5:1 or more against its own accent. */}
         <button
-          className="rounded-[3px] bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--bg)] hover:opacity-90"
+          className="bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--bg)] hover:opacity-90"
           onClick={submit}
         >
           {confirmLabel}

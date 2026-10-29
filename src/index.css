@@ -17,9 +17,12 @@
   --surface-solid: #262626;
   --surface-hover: rgba(255, 255, 255, 0.1);
   --border: rgba(255, 255, 255, 0.1);
+  --line-strong: rgba(255, 255, 255, 0.36);
   --text: #f5f5f5;
   --text-dim: #a3a3a3;
   --accent: #38bdf8;
+  --accent-mark: #38bdf8;
+  --danger: #f87171;
   --shadow: rgba(0, 0, 0, 0.55);
 }
 
@@ -28,20 +31,28 @@
    blur, no large radius — so the UI reads as drawn rather than floated.
    Colours still come from the theme, so all presets keep working. */
 :root {
-  --radius-chrome: 4px;
-  --mono: ui-monospace, "Cascadia Mono", "Segoe UI Mono", Consolas, monospace;
+  /* Square. The drafting sheet this is drawn from has no rounded corners;
+     only genuinely round things (swatches, drag handles) are round. */
+  --radius-chrome: 0px;
+  --font-sans: "Familjen Grotesk Variable", ui-sans-serif, system-ui, sans-serif;
+  --mono: "Geist Mono Variable", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  /* One hard offset shadow, no blur. Chrome sits on the sheet, it doesn't float. */
+  --shadow-chrome: 3px 3px 0 var(--shadow);
+  --shadow-dialog: 6px 6px 0 var(--shadow);
 }
 
 .chrome,
 .chrome-solid {
-  border: 1px solid var(--border);
+  border: 1px solid var(--line-strong);
   border-radius: var(--radius-chrome);
-  box-shadow: 3px 3px 0 var(--shadow);
+  box-shadow: var(--shadow-chrome);
 }
 
+/* No backdrop blur. Glass reads as a surface hovering over the board; this
+   language wants panels that sit flat on it, separated by a ruled line.
+   (Sticky notes keep their own opt-in glass — that's content, not chrome.) */
 .chrome {
   background: var(--surface);
-  backdrop-filter: blur(8px);
 }
 
 .chrome-solid {
@@ -51,10 +62,15 @@
 /* Small mono labels (zoom readout, section headings, field labels, keycaps).
    Wide tracking keeps 10-11px legible; they name things, so they stay
    sentence-cased rather than shouting in caps. */
+/* Mono UPPERCASE labels are the drafting sheet's voice: they name a field or a
+   read-out rather than speaking to the reader. 11px, not 10px — caps at 10px
+   with this much tracking stop being comfortably legible. Anything read as
+   prose stays sentence case at 12px or larger. */
 .ui-label {
   font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.06em;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   color: var(--text-dim);
 }
 
@@ -74,6 +90,7 @@ body {
   overscroll-behavior: none;
   background: var(--bg);
   color: var(--text);
+  font-family: var(--font-sans);
 }
 
 /* Canvas app: suppress text selection everywhere so panning/dragging never
@@ -97,8 +114,8 @@ textarea,
    :focus-visible (not :focus) so mouse clicks don't leave rings behind. */
 :focus-visible {
   outline: 2px solid var(--accent);
-  outline-offset: 2px;
-  border-radius: 4px;
+  outline-offset: 0;
+  border-radius: 0;
 }
 
 /* Pointer feedback. Tailwind 4 no longer gives buttons `cursor: pointer`, so
@@ -114,40 +131,49 @@ button:disabled {
   cursor: not-allowed;
 }
 
-/* One shared hover/press rhythm. Short enough to feel immediate, long enough
-   that the change registers instead of snapping. Only compositor-friendly and
-   cheap properties are animated. */
+/* One shared rhythm, and it is colour only. 150ms ease-out on the properties
+   that carry state; nothing moves. A control that shifts under the cursor
+   costs more than the feedback it buys, and on the canvas a transform IS
+   geometry — animating it made resize trail the cursor (fixed in 0.3.2). */
 button,
 summary,
 [role="menuitem"],
-.swatch {
-  transition:
-    background-color 120ms ease,
-    color 120ms ease,
-    opacity 120ms ease,
-    border-color 120ms ease,
-    outline-color 120ms ease,
-    transform 120ms ease;
-}
-
-/* Canvas items get the same rhythm but NOT on transform or size. Their
-   transform IS their geometry: SelectionLayer writes it on every drag/resize
-   frame, so animating it makes the image trail the cursor while moveable's
-   control box (untransitioned) tracks it exactly, and leaves the handles
-   offset once updateRect reads a mid-animation rect. Never animate a property
-   the manipulation layer drives. */
+.swatch,
 .board-item {
   transition:
-    box-shadow 120ms ease,
-    outline-color 120ms ease;
+    background-color 150ms ease-out,
+    color 150ms ease-out,
+    border-color 150ms ease-out,
+    outline-color 150ms ease-out,
+    box-shadow 150ms ease-out,
+    opacity 150ms ease-out;
 }
 
-/* Pressed state: every control dips slightly, so a click is acknowledged even
-   when the action itself takes a moment. */
-button:not(:disabled):active {
-  transform: translateY(1px);
+/* Hover inverts, like a selected cell on a drawing sheet. This one gesture is
+   shared by every control in the app — toolbar icons, menu items, tabs — which
+   is why it lives here once instead of as a hover: utility on each of them.
+   Opt out with .swatch (a colour sample must show its own colour), .danger
+   (destructive controls go red) or .titlebar-control (its own red close). */
+button:not(:disabled):not(.swatch):not(.danger):not(.titlebar-control):not(.note-ctl):hover,
+[role="menuitem"]:not([disabled]):not(.danger):hover {
+  background: var(--text);
+  color: var(--bg);
+  border-color: var(--text);
 }
 
+/* Icons inside an inverted control follow the text colour, so they invert too. */
+button:not(:disabled):hover svg,
+[role="menuitem"]:not([disabled]):hover svg {
+  color: inherit;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+/* Colour samples keep their colour and grow instead, since inverting one would
+   hide the very thing it is showing. */
 .swatch:not(:disabled):hover {
   transform: scale(1.12);
 }
@@ -156,17 +182,43 @@ button:not(:disabled):active {
   transform: scale(1.04);
 }
 
-/* Images on the canvas: a hover outline says "this is selectable" before the
-   click. Outline, not box-shadow, because the selected state sets box-shadow
-   inline and inline styles win. */
-.board-item:hover {
-  cursor: pointer;
-  outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
-  outline-offset: 0;
+/* Destructive controls keep their red and invert into it, rather than taking
+   the ink fill every other control gets. */
+.danger:not(:disabled):hover {
+  background: var(--danger);
+  color: var(--bg);
+  border-color: var(--danger);
 }
 
+/* Images on the canvas. Square, hairline-ruled, and marked in vermilion on
+   hover — the mark colour, used here because an outline on a photograph is not
+   text and needs to read against any image under it. Selection is the accent,
+   set inline by ItemView because it must win over this. */
+.board-item {
+  outline: 1px solid var(--border);
+  outline-offset: 0;
+  box-shadow: var(--shadow-chrome);
+}
+
+/* Grouped: dashed, so membership reads as an annotation rather than competing
+   with selection for a second colour. */
+.board-item.is-grouped {
+  outline: 2px dashed var(--accent-mark);
+}
+
+.board-item:hover {
+  cursor: pointer;
+  outline: 2px solid var(--accent-mark);
+}
+
+/* Selection wins over hover, and over the group dash. */
+.board-item.is-selected,
 .board-item.is-selected:hover {
-  outline: none;
+  outline: 2px solid var(--accent);
+}
+
+.sticky-note {
+  box-shadow: var(--shadow-chrome);
 }
 
 /* A note stays calm until you reach for it: its header buttons and resize
@@ -175,7 +227,7 @@ button:not(:disabled):active {
    levels can't be reordered by utility sorting. */
 .note-ctl {
   opacity: 0.45;
-  transition: opacity 120ms ease;
+  transition: opacity 150ms ease-out;
 }
 
 .sticky-note:hover .note-ctl {
@@ -186,11 +238,84 @@ button:not(:disabled):active {
   opacity: 1;
 }
 
-/* Window controls are full-height segments of a hairline bar; the 1px press
-   dip that suits a free-standing button reads as a wobble here. Their hover
-   fill is the feedback instead. */
-.titlebar-control:not(:disabled):active {
-  transform: none;
+/* A note carries its own ink, so its controls opt out of the shared inversion:
+   painting one in the theme's ink would drop a slab of the wrong colour onto a
+   coloured card. They tint with `currentColor` instead, which on a note is that
+   card's own text. */
+button.note-ctl:not(:disabled):hover {
+  background: color-mix(in srgb, currentColor 14%, transparent);
+}
+
+/* Labelled buttons: outlined, uppercase, square. Icon-only controls stay bare
+   — outlining each of the dozen toolbar icons would make a grid of little
+   boxes where the drafting sheet wants ruled cells. Both share the hover
+   inversion above, which is what actually ties them together. */
+.btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid var(--line-strong);
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+/* Sections are numbered like the sheets of a drawing set. A counter, so none
+   of them is hand-numbered and inserting one renumbers the rest. */
+.sheet {
+  counter-reset: section;
+}
+
+.sheet .numbered::before {
+  counter-increment: section;
+  content: counter(section, decimal-leading-zero);
+  margin-right: 6px;
+  color: var(--accent);
+}
+
+/* The current board's tab is filled with ink and stays that way — the active
+   cell of a title block, not a tinted highlight. It reads as the same gesture
+   the hover inversion makes, held. */
+.tab-active {
+  background: var(--text);
+  color: var(--bg);
+}
+
+/* A 6px vermilion square, the drafting sheet's way of tagging a thing without
+   writing a word. Leads pane tags and the active board tab. */
+.mark {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  background: var(--accent-mark);
+  flex: none;
+}
+
+/* Ruled cells: a row of controls divided by hairlines rather than boxed
+   separately, like the title block of a drawing. The container paints the
+   line colour and the 1px gaps let it through. */
+.ruled-row {
+  display: flex;
+  gap: 1px;
+  background: var(--border);
+}
+
+.ruled-row > * {
+  background: var(--surface-solid);
+}
+
+/* Window controls are full-height segments of a hairline bar. They opt out of
+   the shared inversion above: close goes red, the others take a quiet fill. */
+.titlebar-control:not(:disabled):hover {
+  background: var(--surface-hover);
+}
+
+.titlebar-control.danger:not(:disabled):hover {
+  background: #c42a00;
+  color: #fff;
 }
 
 /* Someone who asked their OS for less motion gets the same states, instantly. */
@@ -203,7 +328,6 @@ button:not(:disabled):active {
     transition-duration: 0.01ms !important;
   }
 
-  button:not(:disabled):active,
   .swatch:not(:disabled):hover,
   .swatch:not(:disabled):active {
     transform: none;

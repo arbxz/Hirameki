@@ -26,8 +26,11 @@ describe("NOTE_PALETTE", () => {
 
 describe("noteStyle", () => {
   it("follows the theme accent when color is null (solid)", () => {
+    // The accent carries the card's rule, not a wash over its face: text sits
+    // on plain paper so it stays legible whatever the accent is set to.
     const s = noteStyle(null, false);
-    expect(String(s.background)).toContain("var(--accent)");
+    expect(String(s.border)).toContain("var(--accent)");
+    expect(s.background).toBe("var(--surface-solid)");
     expect(s.color).toBe("var(--text)");
     expect(s.backdropFilter).toBeUndefined();
   });

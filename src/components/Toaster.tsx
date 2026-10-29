@@ -18,7 +18,7 @@ const ICONS: Record<ToastKind, typeof Info> = {
 const TONE: Record<ToastKind, string> = {
   info: "text-[var(--text-dim)]",
   success: "text-emerald-400",
-  error: "text-red-400",
+  error: "text-[var(--danger)]",
   progress: "text-[var(--text-dim)]",
 };
 
@@ -55,7 +55,7 @@ export function Toaster() {
               }
             }}
             className={`chrome-solid pointer-events-auto flex w-full items-center gap-2.5 py-2 pl-3 pr-2 text-xs text-[var(--text)] ${
-              t.kind === "error" ? "border-red-500/50" : ""
+              t.kind === "error" ? "border-[var(--danger)]" : ""
             }`}
           >
             <Icon
@@ -69,7 +69,7 @@ export function Toaster() {
             </span>
             {t.action && (
               <button
-                className="shrink-0 rounded px-2 py-1 text-xs font-medium text-[var(--accent)] hover:bg-[var(--surface-hover)]"
+                className="shrink-0 px-2 py-1 text-xs font-medium text-[var(--accent)]"
                 onClick={() => {
                   t.action?.run();
                   dismiss(t.id);
@@ -79,7 +79,7 @@ export function Toaster() {
               </button>
             )}
             <button
-              className="grid h-6 w-6 shrink-0 place-items-center rounded text-[var(--text-dim)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
+              className="grid h-6 w-6 shrink-0 place-items-center text-[var(--text-dim)] hover:text-[var(--text)]"
               onClick={() => dismiss(t.id)}
               aria-label="Dismiss"
             >
