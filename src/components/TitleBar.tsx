@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useBoardStore } from "../store/boardStore";
+import { useWorkspaceStore } from "../store/workspaceStore";
 
 // Custom frameless title bar (the OS one is disabled via decorations:false in
 // tauri.conf.json). The bar itself is the drag region (data-tauri-drag-region);
@@ -67,6 +68,12 @@ export function TitleBar() {
   // notes and canvas items stay calm until they're the thing being used.
   const [focused, setFocused] = useState(true);
   const boardName = useBoardStore((s) => s.board?.name ?? null);
+  // Workspace then board: the title is the one place the whole path is visible,
+  // and with workspaces the board alone no longer says where you are.
+  const workspaceName = useWorkspaceStore((w) => {
+    const active = w.workspaces.find((x) => x.id === w.activeId);
+    return active?.name ?? null;
+  });
 
   useEffect(() => {
     const w = appWindow();
@@ -101,14 +108,27 @@ export function TitleBar() {
         <span data-tauri-drag-region className="text-[var(--text)]">
           Hirameki
         </span>
+        {workspaceName && (
+          <>
+            <span data-tauri-drag-region aria-hidden="true">
+              ·
+            </span>
+            <span data-tauri-drag-region className="max-w-40 truncate">
+              {workspaceName}
+            </span>
+          </>
+        )}
         {boardName && (
           <>
             <span data-tauri-drag-region aria-hidden="true">
               ·
             </span>
-            {/* The window title is the board you're on — the one piece of
-                state that was only visible as a highlighted tab. */}
-            <span data-tauri-drag-region className="max-w-56 truncate">
+            {/* The board reads brighter than the workspace holding it: both are
+                where you are, but the board is what you are looking at. */}
+            <span
+              data-tauri-drag-region
+              className="max-w-56 truncate text-[var(--text)]"
+            >
               {boardName}
             </span>
           </>

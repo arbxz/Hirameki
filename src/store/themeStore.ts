@@ -9,12 +9,12 @@ import {
 import { getSetting, setSetting } from "../lib/settings";
 
 // Applies a theme by writing its tokens as CSS variables on <html>. The current
-// preset name and any custom overrides persist in the settings table.
+// preset name and any custom overrides persist in the settings table, scoped to
+// the active workspace — appearance travels with a workspace, so switching one
+// restyles the app. workspaceStore calls loadForWorkspace; nothing here reaches
+// back up to it.
 
 const SK = { name: "theme.name", custom: "theme.custom" } as const;
-
-// Guards against a second init() (React StrictMode mounts effects twice in dev).
-let initStarted = false;
 
 function applyTheme(theme: Theme) {
   const root = document.documentElement;
@@ -27,7 +27,10 @@ interface ThemeState {
   name: string; // preset name, or "Custom"
   custom: Theme; // editable custom theme (seeded from Dark)
   ready: boolean;
-  init: () => Promise<void>;
+  /** Whose appearance is loaded; null until the first workspace opens. */
+  workspaceId: string | null;
+  /** Read and apply a workspace's saved theme. Called on launch and on switch. */
+  loadForWorkspace: (workspaceId: string) => Promise<void>;
   /** Switch to a named preset. */
   selectPreset: (name: string) => void;
   /** Edit one token of the custom theme and switch to it. */
@@ -38,13 +41,12 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
   name: DEFAULT_THEME_NAME,
   custom: { ...PRESETS[DEFAULT_THEME_NAME] },
   ready: false,
+  workspaceId: null,
 
-  async init() {
-    if (initStarted) return;
-    initStarted = true;
+  async loadForWorkspace(workspaceId) {
     const [savedName, savedCustom] = await Promise.all([
-      getSetting(SK.name),
-      getSetting(SK.custom),
+      getSetting(SK.name, workspaceId),
+      getSetting(SK.custom, workspaceId),
     ]);
     const custom: Theme = savedCustom
       ? { ...PRESETS[DEFAULT_THEME_NAME], ...JSON.parse(savedCustom) }
@@ -52,7 +54,7 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
     const name = savedName ?? DEFAULT_THEME_NAME;
     const active = name === "Custom" ? custom : (PRESETS[name] ?? PRESETS[DEFAULT_THEME_NAME]);
     applyTheme(active);
-    set({ name, custom, ready: true });
+    set({ name, custom, ready: true, workspaceId });
   },
 
   selectPreset(name) {
@@ -60,14 +62,16 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
     if (!theme) return;
     applyTheme(theme);
     set({ name });
-    void setSetting(SK.name, name);
+    const ws = get().workspaceId ?? undefined;
+    void setSetting(SK.name, name, ws);
   },
 
   setCustomToken(token, value) {
     const custom = { ...get().custom, [token]: value };
     applyTheme(custom);
     set({ name: "Custom", custom });
-    void setSetting(SK.name, "Custom");
-    void setSetting(SK.custom, JSON.stringify(custom));
+    const ws = get().workspaceId ?? undefined;
+    void setSetting(SK.name, "Custom", ws);
+    void setSetting(SK.custom, JSON.stringify(custom), ws);
   },
 }));

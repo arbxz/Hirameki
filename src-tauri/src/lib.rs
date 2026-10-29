@@ -46,6 +46,12 @@ pub fn run() {
             sql: include_str!("../migrations/006_note_font_size.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 7,
+            description: "workspaces",
+            sql: include_str!("../migrations/007_workspaces.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     #[allow(unused_mut)]

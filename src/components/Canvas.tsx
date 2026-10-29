@@ -27,6 +27,7 @@ import { NoteView } from "./NoteView";
 import { SelectionLayer } from "./SelectionLayer";
 import { BoardBackground } from "./BoardBackground";
 import { BoardTabs } from "./BoardTabs";
+import { WorkspaceCell } from "./WorkspaceCell";
 import { ShortcutsModal } from "./ShortcutsModal";
 import { useMenuKeyboard } from "./useMenuKeyboard";
 import { boundsOf, fitView, type Box } from "../lib/geometry";
@@ -128,7 +129,6 @@ export function Canvas() {
   const items = useBoardStore((s) => s.items);
   const notes = useBoardStore((s) => s.notes);
   const loading = useBoardStore((s) => s.loading);
-  const init = useBoardStore((s) => s.init);
   const setView = useBoardStore((s) => s.setView);
   const addItem = useBoardStore((s) => s.addItem);
   const addNote = useBoardStore((s) => s.addNote);
@@ -446,11 +446,6 @@ export function Canvas() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [noteMenu]);
-
-  // Load the board on mount.
-  useEffect(() => {
-    void init();
-  }, [init]);
 
   // Flush pending viewport + note-text writes when the window is closing so the
   // next launch restores the exact last position and note contents.
@@ -802,6 +797,7 @@ export function Canvas() {
       {/* toolbar */}
       <div className="ui-chrome absolute left-4 top-4 flex max-w-[calc(100vw-2rem)] flex-wrap items-center gap-2">
         {/* board switcher */}
+        <WorkspaceCell />
         <BoardTabs />
         <button
           data-tour="upload"

@@ -5,12 +5,21 @@ import { TitleBar } from "./components/TitleBar";
 import { Toaster } from "./components/Toaster";
 import { OnboardingTour } from "./components/OnboardingTour";
 import { useOnboardingStore } from "./store/onboardingStore";
+import { useWorkspaceStore } from "./store/workspaceStore";
 import { installSelectionGuard } from "./lib/preventSelection";
 import { checkForUpdates } from "./lib/updater";
 
 function App() {
   // Suppress drag-to-highlight across the whole app.
   useEffect(() => installSelectionGuard(), []);
+
+  // One entry point: the workspace store resolves which workspace to open, then
+  // loads its boards and its appearance. Boards and theme no longer init
+  // themselves, because neither knows which workspace it belongs to.
+  const initWorkspaces = useWorkspaceStore((w) => w.init);
+  useEffect(() => {
+    void initWorkspaces();
+  }, [initWorkspaces]);
 
   // Opens the tour on a machine that has never run it.
   const initTour = useOnboardingStore((t) => t.init);

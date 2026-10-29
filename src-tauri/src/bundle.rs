@@ -13,8 +13,35 @@ use tauri::{AppHandle, Manager};
 
 #[derive(Serialize, Deserialize)]
 struct Bundle {
+    /// Bundle format. Absent in files written before workspaces existed, which
+    /// `serde(default)` reports as 0 so the JS side can recognise them.
+    #[serde(default)]
+    version: u32,
+    /// "workspace" or "all". Absent in pre-workspaces files.
+    #[serde(default)]
+    scope: Option<String>,
     manifest: String,
     assets: HashMap<String, String>, // relative path -> base64 bytes
+}
+
+/// What `import_data` hands back: everything except the (already restored)
+/// assets, so the JS side can see which kind of bundle it is before applying it.
+#[derive(Serialize)]
+struct BundleHead {
+    version: u32,
+    scope: Option<String>,
+    manifest: String,
+}
+
+/// Asset keys come from the bundle file, which is untrusted input, and are
+/// joined onto the app data dir. Without this a crafted bundle could use
+/// `../` or an absolute path to write anywhere the app can write.
+fn safe_relative(rel: &str) -> bool {
+    let p = std::path::Path::new(rel);
+    !p.is_absolute()
+        && !rel.contains(':')
+        && p.components()
+            .all(|c| matches!(c, std::path::Component::Normal(_)))
 }
 
 fn app_data(app: &AppHandle) -> Result<PathBuf, String> {
@@ -29,6 +56,8 @@ fn app_data(app: &AppHandle) -> Result<PathBuf, String> {
 pub fn export_data(
     app: AppHandle,
     out_path: String,
+    version: u32,
+    scope: String,
     manifest: String,
     asset_paths: Vec<String>,
 ) -> Result<(), String> {
@@ -41,7 +70,12 @@ pub fn export_data(
         }
     }
     let asset_count = assets.len();
-    let bundle = Bundle { manifest, assets };
+    let bundle = Bundle {
+        version,
+        scope: Some(scope),
+        manifest,
+        assets,
+    };
     let json = serde_json::to_string(&bundle).map_err(|e| format!("serialize: {e}"))?;
     fs::write(&out_path, json).map_err(|e| {
         log::error!("export_data write failed ({out_path}): {e}");
@@ -52,7 +86,7 @@ pub fn export_data(
 }
 
 /// Read a bundle file: restore its assets into the app data dir and return the
-/// manifest JSON for the JS layer to apply to the database.
+/// version, scope and manifest for the JS layer to apply to the database.
 #[tauri::command]
 pub fn import_data(app: AppHandle, in_path: String) -> Result<String, String> {
     let base = app_data(&app)?;
@@ -66,6 +100,10 @@ pub fn import_data(app: AppHandle, in_path: String) -> Result<String, String> {
     })?;
     let asset_count = bundle.assets.len();
     for (rel, b64) in bundle.assets {
+        if !safe_relative(&rel) {
+            log::error!("import_data rejected asset path: {rel}");
+            return Err(format!("unsafe asset path in bundle: {rel}"));
+        }
         let p = base.join(&rel);
         if let Some(parent) = p.parent() {
             fs::create_dir_all(parent).map_err(|e| format!("create dir: {e}"))?;
@@ -76,5 +114,10 @@ pub fn import_data(app: AppHandle, in_path: String) -> Result<String, String> {
         fs::write(&p, bytes).map_err(|e| format!("write asset {rel}: {e}"))?;
     }
     log::info!("import_data restored {asset_count} assets from {in_path}");
-    Ok(bundle.manifest)
+    let head = BundleHead {
+        version: bundle.version,
+        scope: bundle.scope,
+        manifest: bundle.manifest,
+    };
+    serde_json::to_string(&head).map_err(|e| format!("serialize head: {e}"))
 }

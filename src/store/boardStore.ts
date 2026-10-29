@@ -11,7 +11,7 @@ import {
   listBoards,
   listGroups,
   listItems,
-  loadOrCreateDefaultBoard,
+  loadOrCreateFirstBoard,
   reorderBoards as repoReorderBoards,
   restoreGroup as repoRestoreGroup,
   saveBoardView,
@@ -31,6 +31,7 @@ import {
 import { getSetting, setSetting } from "../lib/settings";
 import { toast } from "./toastStore";
 
+// Per workspace: each one reopens on the board you left it on.
 const ACTIVE_BOARD_KEY = "board.activeId";
 
 /**
@@ -118,8 +119,17 @@ interface BoardState {
   /** Drop the entire history (board switch, import, tests). */
   clearHistory: () => void;
 
-  /** Load all boards and open the last-active one (or the default). */
-  init: () => Promise<void>;
+  /** The workspace whose boards are loaded, or null before the first open. */
+  workspaceId: string | null;
+  /**
+   * Load a workspace's boards and open the one it was left on.
+   *
+   * Called by workspaceStore on launch and on every switch. Switching drops the
+   * undo history: entries close over rows belonging to the workspace that
+   * recorded them, and replaying one against another workspace would resurrect
+   * its contents here — the same reason switchBoard drops it.
+   */
+  openWorkspace: (workspaceId: string) => Promise<void>;
 
   /** Switch to another board, loading its contents. */
   switchBoard: (id: string) => Promise<void>;
@@ -225,9 +235,6 @@ interface BoardState {
 type ItemGeomPatch = Partial<
   Pick<Item, "x" | "y" | "width" | "height" | "rotation" | "z" | "groupId">
 >;
-
-// Guards against a second init() (React StrictMode mounts effects twice in dev).
-let initStarted = false;
 
 export const useBoardStore = create<BoardState>((set, get) => {
   // Persist the viewport at most every 400ms.
@@ -344,12 +351,13 @@ export const useBoardStore = create<BoardState>((set, get) => {
     // them; replaying one against a different board would resurrect its
     // contents here. Switching boards starts a fresh stack.
     dropHistory();
-    void setSetting(ACTIVE_BOARD_KEY, board.id);
+    void setSetting(ACTIVE_BOARD_KEY, board.id, get().workspaceId ?? undefined);
   };
 
   return {
     board: null,
     boards: [],
+    workspaceId: null,
     groups: [],
     items: [],
     notes: [],
@@ -387,23 +395,28 @@ export const useBoardStore = create<BoardState>((set, get) => {
       dropHistory();
     },
 
-    async init() {
-      if (initStarted) return;
-      initStarted = true;
+    async openWorkspace(workspaceId) {
+      // No initStarted guard here: unlike the old init(), this runs again on
+      // every workspace switch. StrictMode's double-mount is handled a level
+      // up, by workspaceStore.init().
       try {
-        // Ensure the default board exists on first run, then load the full set.
-        await loadOrCreateDefaultBoard();
+        set({ loading: true, workspaceId });
+        // Leaving a workspace: flush its pending writes and drop its history
+        // before anything from the next one lands in state.
+        persistView.flush();
+        flushNoteWriters();
+        dropHistory();
+        // Ensure the workspace has a board to open, then load the full set.
+        await loadOrCreateFirstBoard(workspaceId);
         const [boards, activeId] = await Promise.all([
-          listBoards(),
-          getSetting(ACTIVE_BOARD_KEY),
+          listBoards(workspaceId),
+          getSetting(ACTIVE_BOARD_KEY, workspaceId),
         ]);
-        const active =
-          boards.find((b) => b.id === activeId) ?? boards[0];
+        const active = boards.find((b) => b.id === activeId) ?? boards[0];
         set({ boards });
         await openBoard(active);
         set({ loading: false });
       } catch (e) {
-        initStarted = false; // allow a retry after a failed load
         // Loudly: the canvas renders an ordinary empty board when there are no
         // boards, so a silent failure here is indistinguishable from losing
         // every board you own.
@@ -429,7 +442,9 @@ export const useBoardStore = create<BoardState>((set, get) => {
 
     async createBoard(name, color) {
       try {
-        const board = await repoCreateBoard(name, color);
+        const workspaceId = get().workspaceId;
+        if (!workspaceId) throw new Error("no workspace is open");
+        const board = await repoCreateBoard(workspaceId, name, color);
         persistView.flush();
         flushNoteWriters();
         set({ boards: [...get().boards, board] });
@@ -483,7 +498,8 @@ export const useBoardStore = create<BoardState>((set, get) => {
         })
         .filter((b): b is Board => b !== null);
       set({ boards: reordered });
-      await repoReorderBoards(orderedIds);
+      const workspaceId = get().workspaceId;
+      if (workspaceId) await repoReorderBoards(workspaceId, orderedIds);
     },
 
     async setBoardBackground(boardId, source, fit) {

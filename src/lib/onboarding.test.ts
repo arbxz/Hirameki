@@ -22,6 +22,23 @@ describe("tour steps", () => {
       if (!s.anchor) expect(s.placement).toBe("center");
     }
   });
+
+  it("introduces the workspace switcher before the boards inside it", () => {
+    // Order is the argument: boards only make sense once you know what holds
+    // them. OnboardingTour resolves anchors by data-tour attribute, so the
+    // value here has to match the one on WorkspaceCell.
+    const ids = TOUR_STEPS.map((s) => s.id);
+    expect(ids.indexOf("workspace")).toBeGreaterThanOrEqual(0);
+    expect(ids.indexOf("workspace")).toBeLessThan(ids.indexOf("boards"));
+    expect(TOUR_STEPS.find((s) => s.id === "workspace")?.anchor).toBe("workspace");
+  });
+
+  it("has been re-versioned, so people who saw the old tour see this one", () => {
+    // shouldAutoStart compares the stored value against TOUR_VERSION; leaving
+    // it at "1" would hide the workspace step from everyone already running.
+    expect(TOUR_VERSION).not.toBe("1");
+    expect(shouldAutoStart("1")).toBe(true);
+  });
 });
 
 describe("clampStep", () => {

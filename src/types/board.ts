@@ -4,6 +4,8 @@
 
 export interface Board {
   id: string;
+  /** The workspace this board belongs to; it cascade-deletes with it. */
+  workspaceId: string;
   name: string;
   createdAt: number;
   updatedAt: number;
