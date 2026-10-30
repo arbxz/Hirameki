@@ -40,6 +40,20 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
+      # RELEASE_NOTES.md is what the release page says. Kept in the repo so the
+      # notes are written and reviewed alongside the change they describe,
+      # rather than typed into GitHub afterwards and forgotten. Falls back to
+      # the generic line if the file is missing.
+      - name: Read release notes
+        id: notes
+        shell: bash
+        run: |
+          {
+            echo 'body<<RELEASE_NOTES_EOF'
+            cat RELEASE_NOTES.md 2>/dev/null || echo "Download the installer below."
+            echo RELEASE_NOTES_EOF
+          } >> "$GITHUB_OUTPUT"
+
       - name: Build and publish release
         uses: tauri-apps/tauri-action@v0
         env:
@@ -52,6 +66,6 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "Hirameki ${{ github.ref_name }}"
-          releaseBody: "Download the installer below. Existing installs update automatically."
+          releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: false
           prerelease: false

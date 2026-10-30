@@ -69,10 +69,29 @@ This produces, alongside the installers:
 
 The `.sig` files are the signatures the updater verifies.
 
+## Before a release that touches `src-tauri/migrations/`
+
+sqlx records a SHA-384 of each migration's text and refuses to open a database
+whose recorded checksum no longer matches, so **the bytes of an applied
+migration are part of the contract**. [`.gitattributes`](../.gitattributes)
+pins them to CRLF because every release so far was built on a Windows runner
+with `core.autocrlf=true`; changing that would brick the next upgrade for
+everyone who already has the app. Never edit an applied migration — add a new
+numbered one.
+
+A schema change is a **minor** version bump, not a patch, and the migration is
+one way: test it against a copy of a real database first.
+
 ## The release flow (each update)
 
-1. **Bump the version** in all three:
-   `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`.
+1. **Bump the version** in all four — they must agree, or installed copies may
+   never see the release: `package.json`, `src-tauri/Cargo.toml`,
+   `src-tauri/Cargo.lock` (the `hirameki` package entry),
+   `src-tauri/tauri.conf.json`.
+1b. **Write `RELEASE_NOTES.md`.** It is the body of the GitHub release;
+   [`release.yml`](../.github/workflows/release.yml) reads the file at build
+   time. Say plainly whether the database migrates and whether bundles stay
+   readable by older versions.
 2. **Build** with the signing env vars (above).
 3. **Host** the installer where your endpoint can reach it.
 4. **Publish a `latest.json`** manifest at the endpoint URL, e.g.:
