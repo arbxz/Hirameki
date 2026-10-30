@@ -7,6 +7,7 @@ import {
   resolveLaunchWorkspace,
   type Workspace,
 } from "../lib/workspaces";
+import { adoptStrandedBoards } from "../lib/repo";
 import { GLOBAL_KEYS, getSetting, setSetting } from "../lib/settings";
 import { useBoardStore } from "./boardStore";
 import { useThemeStore } from "./themeStore";
@@ -60,12 +61,30 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     if (initStarted) return;
     initStarted = true;
     try {
-      const [workspaces, lastId, defaultId, loadLastRaw] = await Promise.all([
+      const [found, lastId, defaultId, loadLastRaw] = await Promise.all([
         listWorkspaces(),
         getSetting(GLOBAL_KEYS.activeWorkspace),
         getSetting(GLOBAL_KEYS.defaultWorkspace),
         getSetting(GLOBAL_KEYS.loadLastWorkspace),
       ]);
+
+      // The app has no concept of "no workspace", and a database can arrive
+      // without one — restored from an old backup, or emptied by a version
+      // that predates them. Make one rather than opening onto nothing.
+      let workspaces = found;
+      if (workspaces.length === 0) {
+        await createWorkspace("Personal");
+        workspaces = await listWorkspaces();
+      }
+
+      // Sweep up boards that belong to no workspace, into the first one. See
+      // adoptStrandedBoards: they are invisible until something claims them.
+      const adopted = await adoptStrandedBoards(workspaces[0].id);
+      if (adopted > 0) {
+        toast.info(
+          `Recovered ${adopted} board${adopted === 1 ? "" : "s"} into ${workspaces[0].name}`,
+        );
+      }
       // Unset means on: reopening where you left off is the behaviour people
       // already had before workspaces existed.
       const loadLast = loadLastRaw !== "0";

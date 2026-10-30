@@ -47,3 +47,8 @@ boards, notes and images come across as they are. Export first if you want a
 copy you can keep.
 
 Bundles exported by **this** version cannot be opened by 0.3.3 or earlier.
+
+Don't keep an older copy around and run it against the upgraded database. It
+will open, but importing a bundle with it detaches your boards from their
+workspace and they stop showing up. This version puts them back on the next
+launch and tells you it did, but the tidier answer is not to run the old one.

@@ -118,6 +118,28 @@ export async function loadOrCreateFirstBoard(
   return createBoard(workspaceId, "My Board", null);
 }
 
+/**
+ * Attach any board that belongs to no workspace to the given one, returning how
+ * many were adopted.
+ *
+ * `listBoards` filters by workspace, so a board with a NULL workspace_id is
+ * invisible — its images and notes are still there, but nothing can reach them.
+ * That is not hypothetical: an older build run against an upgraded database
+ * imports a pre-workspaces bundle happily, wiping boards and restoring them
+ * with no workspace, because it has no idea the column exists. Rather than
+ * trust that never to happen, every launch sweeps them into a real workspace.
+ */
+export async function adoptStrandedBoards(
+  workspaceId: string,
+): Promise<number> {
+  const db = await getDb();
+  const res = await db.execute(
+    "UPDATE boards SET workspace_id = $1 WHERE workspace_id IS NULL",
+    [workspaceId],
+  );
+  return res.rowsAffected;
+}
+
 /** A workspace's boards, in tab order (left to right). */
 export async function listBoards(workspaceId: string): Promise<Board[]> {
   const db = await getDb();

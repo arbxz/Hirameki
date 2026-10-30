@@ -91,6 +91,15 @@ groups, notes) reaches its workspace through the board and needed no change.
   `initStarted` guard (StrictMode is handled a level up). It flushes pending
   viewport/note writes and **drops undo history** before loading: entries close
   over rows belonging to the workspace that recorded them.
+- **Launch repairs the database before opening it.** `workspaceStore.init()`
+  creates a workspace if there are none, then calls
+  `repo.adoptStrandedBoards(first)` to claim any board with a NULL
+  `workspace_id`. Both are real states, not paranoia: `listBoards` filters by
+  workspace, so a stranded board is invisible even though its images and notes
+  are intact — and **an older build run against an upgraded database produces
+  exactly that**, because its import wipes boards and restores a
+  pre-workspaces bundle with no `workspace_id`, leaving the `workspaces` table
+  untouched since it does not know the table exists.
 - **`repo.ts` is workspace-scoped where it has to be**: `listBoards`,
   `createBoard` (including its `MAX(position)`) and `reorderBoards` all take a
   workspace id. `loadOrCreateDefaultBoard` is gone — it inserted a board with

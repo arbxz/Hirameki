@@ -31,6 +31,8 @@ const settings = {
 const openWorkspace = vi.fn(async () => {});
 const loadForWorkspace = vi.fn(async () => {});
 
+const repo = { adoptStrandedBoards: vi.fn(async () => 0) };
+vi.mock("../lib/repo", () => repo);
 vi.mock("../lib/workspaces", () => lib);
 vi.mock("../lib/settings", () => settings);
 vi.mock("./boardStore", () => ({
@@ -60,6 +62,7 @@ function withSettings(values: Record<string, string | null>) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  repo.adoptStrandedBoards.mockResolvedValue(0);
   lib.listWorkspaces.mockResolvedValue(WORKSPACES);
   lib.resolveLaunchWorkspace.mockReturnValue("a");
   withSettings({});
@@ -118,6 +121,51 @@ describe("launch", () => {
     expect(useWorkspaceStore.getState().ready).toBe(true);
     expect(openWorkspace).not.toHaveBeenCalled();
     expect(useToastStore.getState().toasts[0]?.kind).toBe("error");
+  });
+});
+
+describe("repairing a database that arrives in a bad state", () => {
+  it("creates a workspace when there are none, instead of opening onto nothing", async () => {
+    // A database can arrive without one: restored from an old backup, or
+    // emptied by a version that predates workspaces.
+    lib.listWorkspaces
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([WORKSPACES[0]]);
+    lib.createWorkspace.mockResolvedValue(WORKSPACES[0]);
+    lib.resolveLaunchWorkspace.mockReturnValue("a");
+    const { useWorkspaceStore } = await freshStore();
+
+    await useWorkspaceStore.getState().init();
+
+    expect(lib.createWorkspace).toHaveBeenCalledWith("Personal");
+    expect(useWorkspaceStore.getState().activeId).toBe("a");
+    expect(openWorkspace).toHaveBeenCalledWith("a");
+  });
+
+  it("adopts boards belonging to no workspace, into the first one", async () => {
+    // listBoards filters by workspace, so a board with a NULL workspace_id is
+    // unreachable — its images and notes are still there but nothing can show
+    // them. An older build run against an upgraded database produces exactly
+    // that, by restoring a pre-workspaces bundle over the top.
+    repo.adoptStrandedBoards.mockResolvedValue(8);
+    const { useWorkspaceStore, useToastStore } = await freshStore();
+
+    await useWorkspaceStore.getState().init();
+
+    expect(repo.adoptStrandedBoards).toHaveBeenCalledWith("a");
+    // Say so rather than silently moving someone's boards.
+    const toasts = useToastStore.getState().toasts;
+    expect(toasts).toHaveLength(1);
+    expect(toasts[0].message).toContain("8 boards");
+  });
+
+  it("stays quiet when there is nothing to adopt", async () => {
+    repo.adoptStrandedBoards.mockResolvedValue(0);
+    const { useWorkspaceStore, useToastStore } = await freshStore();
+
+    await useWorkspaceStore.getState().init();
+
+    expect(useToastStore.getState().toasts).toEqual([]);
   });
 });
 
