@@ -1,8 +1,7 @@
-## A new app icon
+## Security and dependency updates
 
-Hirameki has a new icon: two cards from a board, one selected, with a spark
-of inspiration. It replaces the generic icon in the taskbar, the Start menu and
-the installer.
+This release updates Hirameki's dependencies and patches the security
+advisories reported against them. The app itself works the same way.
 
-Nothing else changes. Your boards, workspaces and settings are untouched, and
-the update installs over 0.4.0 as usual.
+Your boards, workspaces and settings are untouched, and the update installs
+over 0.4.1 as usual.
